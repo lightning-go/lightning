@@ -82,5 +82,5 @@ func (s *Server) Start() {
 		return true
 	})
 
-	logger.Info("%v is running...", s.name)
+	logger.Info("%v is running", s.name)
 }

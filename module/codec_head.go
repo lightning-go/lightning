@@ -41,6 +41,7 @@ func (hc *HeadCodec) Write(packet defs.IPacket) error {
 		return ErrCodecWriteNil
 	}
 
+	//data len
 	data := packet.GetData()
 	dataLen := len(data)
 	err := hc.enc.EncodeInt32(int32(dataLen))
@@ -49,6 +50,48 @@ func (hc *HeadCodec) Write(packet defs.IPacket) error {
 		return err
 	}
 
+	//id len
+	id := packet.GetId()
+	idLen := len(id)
+	err = hc.enc.EncodeInt32(int32(idLen))
+	if err != nil {
+		hc.enc.Clean()
+		return err
+	}
+	if idLen > 0 {
+		//id
+		err = hc.enc.EncodeData([]byte(id))
+		if err != nil {
+			hc.enc.Clean()
+			return err
+		}
+	}
+
+	//session len
+	sessionId := packet.GetSessionId()
+	sIdLen := len(sessionId)
+	err = hc.enc.EncodeInt32(int32(sIdLen))
+	if err != nil {
+		hc.enc.Clean()
+		return err
+	}
+	if sIdLen > 0 {
+		//sessionId
+		err = hc.enc.EncodeData([]byte(sessionId))
+		if err != nil {
+			hc.enc.Clean()
+			return err
+		}
+	}
+
+	//status
+	err = hc.enc.EncodeInt32(int32(packet.GetStatus()))
+	if err != nil {
+		hc.enc.Clean()
+		return err
+	}
+
+	//data
 	err = hc.enc.EncodeData(data)
 	if err != nil {
 		hc.enc.Clean()
@@ -64,12 +107,58 @@ func (hc *HeadCodec) Read() (defs.IPacket, error) {
 		return nil, ErrCodecReadNil
 	}
 
+	//data len
 	dataLen, err := hc.dec.DecodeInt32()
 	if err != nil {
 		hc.dec.Clean()
 		return nil, err
 	}
 
+	//id len
+	idLen, err := hc.dec.DecodeInt32()
+	if err != nil {
+		hc.dec.Clean()
+		return nil, err
+	}
+	var id []byte
+	if idLen > 0 {
+		//id
+		idData := make([]byte, idLen)
+		n, err := hc.dec.DecodeDataFull(idData)
+		if err != nil {
+			hc.dec.Clean()
+			return nil, err
+		}
+		id = idData[:n]
+	}
+
+	//sessionId len
+	sIdLen, err := hc.dec.DecodeInt32()
+	if err != nil {
+		hc.dec.Clean()
+		return nil, err
+	}
+	var sId []byte
+	if sIdLen > 0 {
+		//sessionId
+		idData := make([]byte, sIdLen)
+		n, err := hc.dec.DecodeDataFull(idData)
+		if err != nil {
+			hc.dec.Clean()
+			return nil, err
+		}
+		sId = idData[:n]
+	}
+
+	//status
+	status, err := hc.dec.DecodeInt32()
+	if err != nil {
+		hc.dec.Clean()
+		return nil, err
+	}
+
+
+	//data
 	buff := make([]byte, dataLen)
 	n, err := hc.dec.DecodeDataFull(buff)
 	if err != nil {
@@ -78,6 +167,9 @@ func (hc *HeadCodec) Read() (defs.IPacket, error) {
 	}
 
 	p := &defs.Packet{}
+	p.SetId(string(id))
+	p.SetSessionId(string(sId))
+	p.SetStatus(int(status))
 	p.SetData(buff[:n])
 
 	return p, nil

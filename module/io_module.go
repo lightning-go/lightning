@@ -141,14 +141,26 @@ func (ioModule *IOModule) enableRead() {
 }
 
 func (ioModule *IOModule) writeHandle(packet defs.IPacket) error {
+	defer func() {
+		if err := recover(); err != nil {
+			logger.Error(err)
+		}
+	}()
 	return ioModule.codec.Write(packet)
 }
 
 func (ioModule *IOModule) readHandle() error {
+	defer func() {
+		if err := recover(); err != nil {
+			logger.Error(err)
+		}
+	}()
+
 	packet, err := ioModule.codec.Read()
 	if err != nil {
 		return err
 	}
+
 	ioModule.conn.ReadPacket(packet)
 	return nil
 }

@@ -55,7 +55,6 @@ func (wsCodec *WSCodec) Read() (defs.IPacket, error) {
 	}
 
 	p := &defs.Packet{}
-	p.SetId(0)
 	p.SetData(data)
 
 	return p, nil

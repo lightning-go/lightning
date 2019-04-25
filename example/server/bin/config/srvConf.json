@@ -3,27 +3,20 @@
     "name": "gate",
     "host": "192.168.198.158",
     "port": 22001,
+    "remotes": ["logic"],
     "logConf": {
       "default": "./config/log.config"
     }
   },
 
-  "game": {
-    "name": "game",
+  "logic": {
+    "name": "logic",
     "host": "192.168.198.158",
     "port": 23001,
     "logConf": {
       "default": "./config/log.config"
     }
-  },
-
-  "center": {
-    "name": "center",
-    "host": "192.168.198.158",
-    "port": 24001,
-    "logConf": {
-      "default": "./config/log.config"
-    }
   }
+
 
 }

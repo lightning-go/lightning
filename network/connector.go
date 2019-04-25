@@ -76,7 +76,7 @@ func (c *Connector) connect(addr string) {
 		}
 
 		tmpDelay = 0
-		logger.Warn("reconnecting to %v", addr)
+		logger.Trace("reconnecting to %v", addr)
 	}
 
 	c.working = false

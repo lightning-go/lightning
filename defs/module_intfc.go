@@ -6,12 +6,14 @@
 package defs
 
 type IPacket interface {
-	SetData(data []byte)
+	SetData([]byte)
 	GetData() []byte
-	SetSessionId(sessionId string)
+	SetSessionId(string)
 	GetSessionId() string
-	SetId(id uint32)
-	GetId() uint32
+	SetId(string)
+	GetId() string
+	SetStatus(int)
+	GetStatus() int
 }
 
 type ICodec interface {

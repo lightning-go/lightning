@@ -18,6 +18,13 @@ import (
 	"syscall"
 )
 
+var (
+	NullData      = []byte("{}")
+	TypeOfContext = reflect.TypeOf((*context.Context)(nil)).Elem()
+	TypeOfError   = reflect.TypeOf((*error)(nil)).Elem()
+	TypeOfInt     = reflect.TypeOf((*int)(nil)).Elem()
+)
+
 func IF(b bool, t1, t2 interface{}) interface{} {
 	if b {
 		return t1
@@ -121,4 +128,3 @@ func DelMapContext(ctx context.Context, key interface{}) {
 		}
 	}
 }
-

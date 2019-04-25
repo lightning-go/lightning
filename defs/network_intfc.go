@@ -17,6 +17,9 @@ type ConnCallback func(IConnection)
 type MsgCallback func(IConnection, IPacket)
 type AuthorizedCallback func(IConnection, IPacket) bool
 type ClientConnCallback func(net.Conn)
+type ParseMethodNameCallback func(string) (string, error)
+type ParseReqDataCallback func([]byte, interface{}) bool
+type ParseAckDataCallback func(interface{}) []byte
 
 type IServer interface {
 	Name() string
@@ -66,3 +69,9 @@ type ITcpConnection interface {
 type IWSConnection interface {
 	GetConn() *websocket.Conn
 }
+
+type ISession interface {
+	WritePacket(IPacket)
+	WriteData([]byte)
+}
+

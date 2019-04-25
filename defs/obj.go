@@ -5,10 +5,17 @@
 
 package defs
 
+import (
+	"sync"
+	"reflect"
+)
+
+//
 type Packet struct {
 	sessionId string
-	id        uint32
+	id        string
 	data      []byte
+	status    int
 }
 
 func (p *Packet) GetSessionId() string {
@@ -19,11 +26,11 @@ func (p *Packet) SetSessionId(sessionId string) {
 	p.sessionId = sessionId
 }
 
-func (p *Packet) GetId() uint32 {
+func (p *Packet) GetId() string {
 	return p.id
 }
 
-func (p *Packet) SetId(id uint32) {
+func (p *Packet) SetId(id string) {
 	p.id = id
 }
 
@@ -33,4 +40,21 @@ func (p *Packet) GetData() []byte {
 
 func (p *Packet) SetData(data []byte) {
 	p.data = data
+}
+
+func (p *Packet) GetStatus() int {
+	return p.status
+}
+
+func (p *Packet) SetStatus(status int) {
+	p.status = status
+}
+
+//
+type MethodType struct {
+	sync.Mutex
+	Method    reflect.Method //调用方法
+	ArgType   reflect.Type   //方法参数类型
+	ReplyType reflect.Type   //方法的返回值类型
+	numCalls  uint           //被调用次数
 }
