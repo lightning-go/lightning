@@ -18,9 +18,10 @@ type GlobalVal struct {
 	//CompressThreshold int32  //消息包压缩阈值,大于则压缩
 	MaxQueueSize int32 //消息队列边界值
 	//MaxWaitQueueSize  int    //连接等待队列大小
-	HttpTimeout time.Duration
-	PongWait    time.Duration
-	WriteWait   time.Duration
+	HttpTimeout      time.Duration
+	PongWait         time.Duration
+	WriteWait        time.Duration
+	RedisIdleTimeout time.Duration
 }
 
 func newGlobalVal() *GlobalVal {
@@ -32,9 +33,10 @@ func newGlobalVal() *GlobalVal {
 		//CompressThreshold: 100,
 		MaxQueueSize: 8192,
 		//MaxWaitQueueSize:  1000,
-		HttpTimeout: time.Second * 5,
-		PongWait:    time.Second * 120,
-		WriteWait:   time.Second * 60,
+		HttpTimeout:      time.Second * 5,
+		PongWait:         time.Second * 120,
+		WriteWait:        time.Second * 60,
+		RedisIdleTimeout: time.Second * 60,
 	}
 }
 
