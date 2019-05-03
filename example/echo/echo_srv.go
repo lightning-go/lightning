@@ -37,18 +37,18 @@ func main() {
 	srv := network.NewTcpServer(host, "echo", conf.GetGlobalVal().MaxConnNum)
 
 	srv.SetConnCallback(func(conn defs.IConnection) {
-		logger.Trace("%s server %s <- %s is %s %s",
+		logger.Tracef("%s server %s <- %s is %s %s",
 			srv.Name(), conn.LocalAddr(), conn.RemoteAddr(),
 			utils.IF(conn.IsClosed(), "down", "up"), " HAHAHA")
 	})
 
 	srv.SetMsgCallback(func(conn defs.IConnection, packet defs.IPacket) {
-		logger.Trace("onMsg: %s", packet.GetData())
+		logger.Tracef("onMsg: %s", packet.GetData())
 		conn.WritePacket(packet)
 	})
 
 	srv.SetExitCallback(func() {
-		logger.Trace("%v exited", srv.Name())
+		logger.Tracef("%v exited", srv.Name())
 	})
 
 	srv.SetCodec(codec)

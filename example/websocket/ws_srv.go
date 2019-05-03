@@ -29,12 +29,12 @@ func main() {
 	}
 
 	srv.SetConnCallback(func(conn defs.IConnection) {
-		logger.Trace("%v server %v <- %v is %v",
+		logger.Tracef("%v server %v <- %v is %v",
 			srv.Name(), conn.LocalAddr(), conn.RemoteAddr(),
 			util.IF(conn.IsClosed(), "down", "up"))
 	})
 	srv.SetMsgCallback(func(conn defs.IConnection, packet defs.IPacket) {
-		logger.Trace("onMsg: %s", packet.GetData())
+		logger.Tracef("onMsg: %s", packet.GetData())
 		conn.WritePacket(packet)
 	})
 	srv.Serve()

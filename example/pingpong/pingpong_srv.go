@@ -23,7 +23,7 @@ var (
 func main() {
 	flag.Parse()
 
-	logger.InitLog(logger.INFO)
+	logger.SetLevel(logger.INFO)
 
 	addr := fmt.Sprintf(":%v", *port)
 	srv := network.NewTcpServer(addr, "pingpong", *connLimit)

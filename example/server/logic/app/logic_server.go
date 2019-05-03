@@ -40,7 +40,7 @@ func (gs *LogicServer) initService() {
 
 func (gs *LogicServer) onConn(conn defs.IConnection) {
 	isClosed := conn.IsClosed()
-	logger.Trace("%v server %v <- %v is %v",
+	logger.Tracef("%v server %v <- %v is %v",
 		gs.Name(), conn.LocalAddr(), conn.RemoteAddr(),
 		utils.IF(isClosed, "down", "up").(string))
 
@@ -65,7 +65,7 @@ func (gs *LogicServer) onAuthorized(conn defs.IConnection, packet defs.IPacket) 
 func (gs *LogicServer) onMsg(conn defs.IConnection, packet defs.IPacket) {
 	defer func() {
 		if err := recover(); err != nil {
-			logger.Error("panic error : %v", err)
+			logger.Errorf("panic error : %v", err)
 		}
 	}()
 

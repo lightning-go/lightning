@@ -1,20 +1,30 @@
 {
   "gate": {
     "name": "gate",
-    "host": "192.168.198.158",
+    "host": "127.0.0.1",
     "port": 22001,
     "remotes": ["logic"],
-    "logConf": {
-      "default": "./config/log.config"
+    "log": {
+      "default": {
+        "logLevel": "trace",
+        "logPath": "./logs/gate.log",
+        "maxAge": -1,
+        "rotationTime": 1440
+      }
     }
   },
 
   "logic": {
     "name": "logic",
-    "host": "192.168.198.158",
+    "host": "127.0.0.1",
     "port": 23001,
-    "logConf": {
-      "default": "./config/log.config"
+    "log": {
+      "default": {
+        "logLevel": "trace",
+        "logPath": "./logs/logic.log",
+        "maxAge": -1,
+        "rotationTime": 1440
+      }
     }
   }
 

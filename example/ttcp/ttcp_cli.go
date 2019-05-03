@@ -87,7 +87,7 @@ func (tc *TTcpClient) onMsg(conn defs.IConnection, packet defs.IPacket) {
 
 	if !bytes.Equal(tc.data, data) {
 		tc.errorCount++
-		logger.Error("data not equal: %v", data)
+		logger.Errorf("data not equal: %v", data)
 	}
 
 	tc.byteRead += int64(len(data))
@@ -155,7 +155,7 @@ func wait(client *TTcpClient) {
 func main() {
 	flag.Parse()
 
-	logger.InitLog(logger.INFO)
+	logger.SetLevel(logger.INFO)
 
 	fmt.Println("client:", *clientCount, ", send and recv times:", *count)
 	addr := fmt.Sprintf("%v:%v", *host, *port)

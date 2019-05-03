@@ -22,8 +22,13 @@ func NewServer(name, confPath string) *Server {
 	conf.InitCfg(confPath)
 	cfg := conf.Get(name)
 	if cfg == nil {
-		logger.Error("%v config load failed", name)
+		logger.Errorf("%v config load failed", name)
 		return nil
+	}
+
+	logConf := cfg.GetDefaultLogConf()
+	if logConf != nil {
+		logger.InitLog(logConf.LogLevel, logConf.MaxAge, logConf.RotationTime, logConf.LogPath)
 	}
 
 	addr := fmt.Sprintf(":%v", cfg.Port)
@@ -82,5 +87,5 @@ func (s *Server) Start() {
 		return true
 	})
 
-	logger.Info("%v is running", s.name)
+	logger.Infof("%v is running", s.name)
 }

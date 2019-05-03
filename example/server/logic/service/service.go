@@ -14,7 +14,7 @@ import (
 type Service struct{}
 
 func (s *Service) Test(conn defs.ISession, req *global.MsgTestReq, ack *global.MsgTestAck) int {
-	logger.Trace("%v", req.N)
+	logger.Tracef("%v", req.N)
 	ack.Str = "hi..........."
 
 	return global.RESULT_OK

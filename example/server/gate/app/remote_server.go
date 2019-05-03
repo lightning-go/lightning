@@ -26,7 +26,7 @@ func (gs *GateServer) initRemote() {
 }
 
 func (gs *GateServer) onRemoteConn(conn defs.IConnection) {
-	logger.Info("%s -> %s server %s is %s",
+	logger.Tracef("%s -> %s server %s is %s",
 		conn.LocalAddr(), "remote", conn.RemoteAddr(),
 		utils.IF(conn.IsClosed(), "down", "up"))
 	if conn.IsClosed() {
@@ -37,7 +37,7 @@ func (gs *GateServer) onRemoteConn(conn defs.IConnection) {
 }
 
 func (gs *GateServer) onRemoteNewConn(conn defs.IConnection) {
-	data := global.GetAuthorizedData(global.ST_GATE, gs.Name(), "df")
+	data := global.GetAuthorizedData(global.ST_GATE, gs.Name(), global.GateKey)
 	conn.WriteData(data)
 }
 
@@ -45,7 +45,7 @@ func (gs *GateServer) onRemoteDisconn(conn defs.IConnection) {
 }
 
 func (gs *GateServer) onRemoteMsg(conn defs.IConnection, packet defs.IPacket) {
-	logger.Trace("onRemoteMsg: %v - %v - %v", packet.GetSessionId(), packet.GetId(), string(packet.GetData()))
+	logger.Tracef("onRemoteMsg: %v - %v - %v", packet.GetSessionId(), packet.GetId(), string(packet.GetData()))
 
 	session := network.GetSession(packet.GetSessionId())
 	if session == nil {
@@ -55,7 +55,7 @@ func (gs *GateServer) onRemoteMsg(conn defs.IConnection, packet defs.IPacket) {
 }
 
 func (gs *GateServer) onClientMsg(conn defs.IConnection, packet defs.IPacket) {
-	logger.Trace("onClientMsg: %v - %v - %v", packet.GetSessionId(), packet.GetId(), string(packet.GetData()))
+	logger.Tracef("onClientMsg: %v - %v - %v", packet.GetSessionId(), packet.GetId(), string(packet.GetData()))
 
 	remote := gs.GetRemoteClient("logic")
 	if remote == nil {

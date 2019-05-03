@@ -96,7 +96,7 @@ func (ws *WSServer) Serve() {
 		MaxHeaderBytes: 1024,
 	}
 
-	logger.Info("%v server start, listen %v", ws.name, ws.listener.Addr().String())
+	logger.Infof("%v server start, listen %v", ws.name, ws.listener.Addr().String())
 	go ws.httpSrv.Serve(ws.listener)
 
 	GetSrvMgr().AddServer(ws)
@@ -171,7 +171,7 @@ func (ws *WSServer) closeConnection(conn defs.IConnection) {
 	if conn == nil {
 		return
 	}
-	logger.Trace("CloseConnection: %v", conn.GetId())
+	logger.Tracef("CloseConnection: %v", conn.GetId())
 	ws.connMgr.DelConn(conn.GetId())
 	conn.OnConnection()
 }
@@ -181,5 +181,5 @@ func (ws *WSServer) Stop() {
 		ws.exitCallback()
 	}
 
-	logger.Warn("stop %v server", ws.name)
+	logger.Warnf("stop %v server", ws.name)
 }

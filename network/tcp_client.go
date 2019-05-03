@@ -93,7 +93,7 @@ func (tcpClient *TcpClient) Close() {
 
 func (tcpClient *TcpClient) CloseConnection(conn defs.IConnection) {
 	if conn != nil {
-		logger.Trace("CloseConnection: %v", conn.GetId())
+		logger.Tracef("close connection: %v", conn.GetId())
 		conn.OnConnection()
 	}
 	if tcpClient.retry {

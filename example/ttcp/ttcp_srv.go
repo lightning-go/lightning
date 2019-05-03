@@ -99,7 +99,7 @@ func (ts *TTcpServer) onMsg(conn defs.IConnection, packet defs.IPacket) {
 func main() {
 	flag.Parse()
 
-	logger.InitLog(logger.INFO)
+	logger.SetLevel(logger.INFO)
 
 	addr := fmt.Sprintf(":%v", *port)
 	srv := NewTTcpServer("ttcp", addr, *connLimit)

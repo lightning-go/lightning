@@ -63,7 +63,7 @@ func (c *Connector) connect(addr string) {
 			if tmpDelay > maxDelay {
 				tmpDelay = maxDelay
 			}
-			logger.Warn("connecting to %v error, retrying in %v second", addr, tmpDelay.Seconds())
+			logger.Warnf("connecting to %v error, retrying in %v second", addr, tmpDelay.Seconds())
 			time.Sleep(tmpDelay)
 			continue
 		}
@@ -76,7 +76,7 @@ func (c *Connector) connect(addr string) {
 		}
 
 		tmpDelay = 0
-		logger.Trace("reconnecting to %v", addr)
+		logger.Tracef("reconnecting to %v", addr)
 	}
 
 	c.working = false

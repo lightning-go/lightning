@@ -82,7 +82,7 @@ func (tcpServer *TcpServer) start() {
 }
 
 func (tcpServer *TcpServer) serveTcp() {
-	logger.Info("%v start, listen %v", tcpServer.name, tcpServer.listener.Addr().String())
+	logger.Infof("%v start, listen %v", tcpServer.name, tcpServer.listener.Addr().String())
 	var tmpDelay time.Duration
 	maxDelay := 1 * time.Second
 
@@ -99,7 +99,7 @@ func (tcpServer *TcpServer) serveTcp() {
 				if tmpDelay > maxDelay {
 					tmpDelay = maxDelay
 				}
-				logger.Warn("%v accept error: %v, retrying in %v millisecond",
+				logger.Warnf("%v accept error: %v, retrying in %v millisecond",
 					tcpServer.name, err, tmpDelay)
 				time.Sleep(tmpDelay)
 				continue
@@ -163,7 +163,7 @@ func (tcpServer *TcpServer) CloseConnection(conn defs.IConnection) {
 	if conn == nil {
 		return
 	}
-	logger.Trace("close connection: %v", conn.GetId())
+	logger.Tracef("close connection: %v", conn.GetId())
 	tcpServer.connMgr.DelConn(conn.GetId())
 	conn.OnConnection()
 }
@@ -173,5 +173,5 @@ func (tcpServer *TcpServer) Stop() {
 		tcpServer.exitCallback()
 	}
 
-	logger.Warn("stop %v server", tcpServer.name)
+	logger.Warnf("stop %v server", tcpServer.name)
 }

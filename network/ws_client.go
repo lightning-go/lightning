@@ -96,7 +96,7 @@ func (wsclient *WSClient) Close() {
 
 func (wsclient *WSClient) CloseConnection(conn defs.IConnection) {
 	if conn != nil {
-		logger.Trace("CloseConnection: %v", conn.GetId())
+		logger.Tracef("CloseConnection: %v", conn.GetId())
 		conn.OnConnection()
 	}
 	if wsclient.retry {
@@ -134,7 +134,7 @@ func (wsclient *WSClient) connect() {
 			if tmpDelay > maxDelay {
 				tmpDelay = maxDelay
 			}
-			logger.Warn("connecting to %v error, retrying in %v second", addr, tmpDelay.Seconds())
+			logger.Warnf("connecting to %v error, retrying in %v second", addr, tmpDelay.Seconds())
 			time.Sleep(tmpDelay)
 			continue
 		}
@@ -147,7 +147,7 @@ func (wsclient *WSClient) connect() {
 		}
 
 		tmpDelay = 0
-		logger.Warn("reconnecting to %v", addr)
+		logger.Warnf("reconnecting to %v", addr)
 	}
 
 	logger.Warn("connection disconnected")

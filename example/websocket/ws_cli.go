@@ -32,7 +32,7 @@ func main() {
 	}
 
 	client.SetConnCallback(func(conn defs.IConnection) {
-		logger.Trace("%v %v -> %v is %v\n", client.Name(),
+		logger.Tracef("%v %v -> %v is %v\n", client.Name(),
 			conn.LocalAddr(), conn.RemoteAddr(),
 			util.IF(conn.IsClosed(), "down", "up"))
 
@@ -41,7 +41,7 @@ func main() {
 	})
 	
 	client.SetMsgCallback(func(conn defs.IConnection, packet defs.IPacket) {
-		logger.Trace("onMsg: %s", packet.GetData())
+		logger.Trace("", logger.Fields{"onMsg": string(packet.GetData())})
 
 		time.Sleep(time.Second * 1)
 		data := util.NowTimeFormat()

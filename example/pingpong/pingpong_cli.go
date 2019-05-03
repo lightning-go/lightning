@@ -184,7 +184,7 @@ func (p *PingPongClient) onDisconn(conn defs.IConnection) {
 func main() {
 	flag.Parse()
 
-	logger.InitLog(logger.INFO)
+	logger.SetLevel(logger.INFO)
 
 	addr := fmt.Sprintf("%v:%v", *host, *port)
 	client := NewPingPongClient("pingpong", addr, *codecType, *clientNum, *timeout, *blockSize)

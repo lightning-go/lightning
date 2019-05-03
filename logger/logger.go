@@ -6,102 +6,206 @@
 package logger
 
 import (
+	log "github.com/sirupsen/logrus"
+	"os"
 	"runtime"
 	"fmt"
-	"strings"
-	l4g "github.com/alecthomas/log4go"
+	"time"
+	"github.com/lestrrat-go/file-rotatelogs"
+	"github.com/rifflock/lfshook"
 )
 
 const (
-	FINEST   = iota
-	FINE
+	PANIC = iota
+	FATAL
+	ERROR
+	WARN
+	INFO
 	DEBUG
 	TRACE
-	INFO
-	WARNING
-	ERROR
-	CRITICAL
 
-	skipNum = 2
+	skipNum = 3
 )
 
-var defaultLogger l4g.Logger
+type Fields = map[string]interface{}
 
-func InitLog(logLv ...int) {
-	if defaultLogger != nil {
+type Logger struct {
+	logger  *log.Logger
+	skipNum int
+}
+
+func NewLogger(lv int, isJsonFormat ...bool) *Logger {
+	l := &Logger{
+		logger:  log.New(),
+		skipNum: skipNum,
+	}
+	if l.logger == nil {
+		return nil
+	}
+
+	var format log.Formatter = &log.TextFormatter{TimestampFormat: "2006/01/02 15:04:05"}
+	if len(isJsonFormat) > 0 && isJsonFormat[0] {
+		format = &log.JSONFormatter{TimestampFormat: "2006/01/02 15:04:05"}
+	}
+	l.logger.SetFormatter(format)
+	l.logger.SetLevel(log.Level(lv))
+	l.logger.SetOutput(os.Stdout)
+	return l
+}
+
+func (l *Logger) SetRotation(maxAge, rotationTime time.Duration, pathFile string) {
+	if l.logger == nil {
 		return
 	}
 
-	lv := l4g.TRACE
-	if len(logLv) > 0 && logLv[0] >= 0 {
-		lv = l4g.Level(logLv[0])
-	}
-
-	defaultLogger = l4g.NewDefaultLogger(lv)
-}
-
-func InitLogByConfig(path string) {
-	if defaultLogger == nil {
-		defaultLogger = l4g.NewDefaultLogger(l4g.TRACE)
-	}
-	defaultLogger.LoadConfiguration(path)
-}
-
-func Exit() {
-	if defaultLogger == nil {
+	if len(pathFile) == 0 {
 		return
 	}
-	defaultLogger.Close()
+	w, err := rotatelogs.New(
+		pathFile+".%Y%m%d%H%M",
+		rotatelogs.WithLinkName(pathFile),
+		rotatelogs.WithMaxAge(maxAge),
+		rotatelogs.WithRotationTime(rotationTime),
+	)
+	if err != nil {
+		return
+	}
+
+	ifHook := lfshook.NewHook(lfshook.WriterMap{
+		log.InfoLevel:  w,
+		log.WarnLevel:  w,
+		log.ErrorLevel: w,
+	}, &log.JSONFormatter{
+		TimestampFormat: "2006/01/02 15:04:05",
+	})
+
+	l.logger.Hooks.Add(ifHook)
 }
 
-func Logf(handler *l4g.Logger, level l4g.Level, skip int, arg0 interface{}, args ...interface{}) {
+func (l *Logger) SetLevel(level int) {
+	l.logger.SetLevel(log.Level(level))
+}
+
+func (l *Logger) SetSkipNum(val int) {
+	l.skipNum = val
+}
+
+func (l *Logger) getCaller(skip int) string {
 	pc, _, lineno, ok := runtime.Caller(skip)
 	src := ""
 	if ok {
 		src = fmt.Sprintf("%s:%d", runtime.FuncForPC(pc).Name(), lineno)
 	}
+	return src
+}
 
-	var msg string
-	switch arg0.(type) {
-	case string:
-		msg = arg0.(string)
-	default:
-		msg = fmt.Sprint(arg0) + strings.Repeat(" %v", len(args))
+func (l *Logger) logFields(level log.Level, fields map[string]interface{}, args interface{}) {
+	src := l.getCaller(l.skipNum)
+
+	if fields != nil && len(fields) > 0 {
+		fields["file"] = src
+		l.logger.WithFields(fields).Log(level, args)
+		return
 	}
 
+	l.logger.WithFields(log.Fields{
+		"file": src,
+	}).Log(level, args)
+}
+
+func (l *Logger) logf(level log.Level, format string, args ...interface{}) {
+	src := l.getCaller(l.skipNum)
+
+	msg := ""
 	if len(args) > 0 {
-		msg = fmt.Sprintf(msg, args...)
+		msg = fmt.Sprintf(format, args...)
 	}
 
-	handler.Log(level, src, msg)
+	l.logger.WithFields(log.Fields{
+		"file": src,
+	}).Log(level, msg)
 }
 
-func Debug(arg0 interface{}, args ...interface{}) {
-	InitLog()
-	Logf(&defaultLogger, l4g.DEBUG, skipNum, arg0, args...)
+func (l *Logger) Panic(args interface{}, fields ...map[string]interface{}) {
+	if len(fields) > 0 && fields[0] != nil {
+		l.logFields(log.PanicLevel, fields[0], args)
+	} else {
+		l.logFields(log.PanicLevel, nil, args)
+	}
 }
 
-func Trace(arg0 interface{}, args ...interface{}) {
-	InitLog()
-	Logf(&defaultLogger, l4g.TRACE, skipNum, arg0, args...)
+func (l *Logger) Panicf(format string, args ...interface{}) {
+	l.logf(log.PanicLevel, format, args...)
 }
 
-func Info(arg0 interface{}, args ...interface{}) {
-	InitLog()
-	Logf(&defaultLogger, l4g.INFO, skipNum, arg0, args...)
+func (l *Logger) Fatal(args interface{}, fields ...map[string]interface{}) {
+	if len(fields) > 0 && fields[0] != nil {
+		l.logFields(log.FatalLevel, fields[0], args)
+	} else {
+		l.logFields(log.PanicLevel, nil, args)
+	}
 }
 
-func Warn(arg0 interface{}, args ...interface{}) {
-	InitLog()
-	Logf(&defaultLogger, l4g.WARNING, skipNum, arg0, args...)
+func (l *Logger) Fatalf(format string, args ...interface{}) {
+	l.logf(log.FatalLevel, format, args...)
 }
 
-func Error(arg0 interface{}, args ...interface{}) {
-	InitLog()
-	Logf(&defaultLogger, l4g.ERROR, skipNum, arg0, args...)
+func (l *Logger) Error(args interface{}, fields ...map[string]interface{}) {
+	if len(fields) > 0 && fields[0] != nil {
+		l.logFields(log.ErrorLevel, fields[0], args)
+	} else {
+		l.logFields(log.ErrorLevel, nil, args)
+	}
 }
 
-func Cri(arg0 interface{}, args ...interface{}) {
-	InitLog()
-	Logf(&defaultLogger, l4g.CRITICAL, skipNum, arg0, args...)
+func (l *Logger) Errorf(format string, args ...interface{}) {
+	l.logf(log.ErrorLevel, format, args...)
+}
+
+func (l *Logger) Warn(args interface{}, fields ...map[string]interface{}) {
+	if len(fields) > 0 && fields[0] != nil {
+		l.logFields(log.ErrorLevel, fields[0], args)
+	} else {
+		l.logFields(log.ErrorLevel, nil, args)
+	}
+}
+
+func (l *Logger) Warnf(format string, args ...interface{}) {
+	l.logf(log.WarnLevel, format, args...)
+}
+
+func (l *Logger) Info(args interface{}, fields ...map[string]interface{}) {
+	if len(fields) > 0 && fields[0] != nil {
+		l.logFields(log.InfoLevel, fields[0], args)
+	} else {
+		l.logFields(log.InfoLevel, nil, args)
+	}
+}
+
+func (l *Logger) Infof(format string, args ...interface{}) {
+	l.logf(log.InfoLevel, format, args...)
+}
+
+func (l *Logger) Debug(args interface{}, fields ...map[string]interface{}) {
+	if len(fields) > 0 && fields[0] != nil {
+		l.logFields(log.DebugLevel, fields[0], args)
+	} else {
+		l.logFields(log.DebugLevel, nil, args)
+	}
+}
+
+func (l *Logger) Debugf(format string, args ...interface{}) {
+	l.logf(log.DebugLevel, format, args...)
+}
+
+func (l *Logger) Trace(args interface{}, fields ...map[string]interface{}) {
+	if len(fields) > 0 && fields[0] != nil {
+		l.logFields(log.TraceLevel, fields[0], args)
+	} else {
+		l.logFields(log.TraceLevel, nil, args)
+	}
+}
+
+func (l *Logger) Tracef(format string, args ...interface{}) {
+	l.logf(log.TraceLevel, format, args...)
 }

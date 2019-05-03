@@ -34,7 +34,7 @@ type WSConnection struct {
 func NewWSConnection(conn *websocket.Conn) *WSConnection {
 	id, err := uuid.NewV4()
 	if err != nil {
-		logger.Error("new Connection: %v", err)
+		logger.Error(err)
 		return nil
 	}
 

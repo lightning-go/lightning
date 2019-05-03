@@ -37,7 +37,7 @@ func (gs *GateServer) init() {
 
 func (gs *GateServer) onConn(conn defs.IConnection) {
 	isClosed := conn.IsClosed()
-	logger.Trace("%v server %v <- %v is %v",
+	logger.Tracef("%v server %v <- %v is %v",
 		gs.Name(), conn.LocalAddr(), conn.RemoteAddr(),
 		utils.IF(isClosed, "down", "up").(string))
 

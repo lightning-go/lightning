@@ -45,7 +45,6 @@ func WaitExit(fList ...func()) {
 			}
 		}
 	}
-	logger.Exit()
 }
 
 func WaitSignal() {
@@ -54,7 +53,7 @@ func WaitSignal() {
 	//signal.Notify(c, os.Interrupt, os.Kill)
 	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL)
 	sig := <-c
-	logger.Warn("signal:[%v]", sig)
+	logger.Warn("recv signal", logger.Fields{"signal": sig})
 }
 
 func String(b []byte) (s string) {

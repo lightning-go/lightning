@@ -20,9 +20,9 @@ import (
 )
 
 func TestGame(t *testing.T)  {
-	logger.InitLog(logger.INFO)
+	logger.SetLevel(logger.INFO)
 
-	client := network.NewTcpClient("client", "192.168.198.158:22001")
+	client := network.NewTcpClient("client", "127.0.0.1:22001")
 	if client == nil {
 		log.ERROR("new client faield")
 		return

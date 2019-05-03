@@ -34,7 +34,7 @@ type Connection struct {
 func NewConnection(conn net.Conn) *Connection {
 	id, err := uuid.NewV4()
 	if err != nil {
-		logger.Error("new Connection: %v", err)
+		logger.Error(err)
 		return nil
 	}
 

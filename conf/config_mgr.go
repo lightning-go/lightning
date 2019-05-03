@@ -14,21 +14,28 @@ import (
 
 var defaultCfgPath = "./config/srvConf.json"
 
+type LogConfig struct {
+	LogLevel     string `json:"logLevel"`
+	LogPath      string `json:"logPath"`
+	MaxAge       int    `json:"maxAge"`       //分钟, -1 无限制
+	RotationTime int    `json:"rotationTime"` //分钟
+}
+
 type ServerConfig struct {
-	Name    string            `json:"name"`
-	Host    string            `json:"host"`
-	Port    int               `json:"port"`
-	LogConf map[string]string `json:"logConf"`
-	Remotes []string          `json:"remotes"`
+	Name    string                `json:"name"`
+	Host    string                `json:"host"`
+	Port    int                   `json:"port"`
+	Log     map[string]*LogConfig `json:"log"`
+	Remotes []string              `json:"remotes"`
 
 	MaxConn       int `json:"maxConn"`
 	MaxPacketSize int `json:"maxPacketSize"`
 }
 
-func (sc *ServerConfig) GetDefaultLogConf() string {
-	d, ok := sc.LogConf["default"]
+func (sc *ServerConfig) GetDefaultLogConf() *LogConfig {
+	d, ok := sc.Log["default"]
 	if !ok {
-		return ""
+		return nil
 	}
 	return d
 }

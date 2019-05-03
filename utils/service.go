@@ -82,7 +82,7 @@ func (sf *ServiceFactory) OnServiceHandle(session defs.ISession, packet defs.IPa
 	key := packet.GetId()
 	typ := sf.get(key)
 	if typ == nil {
-		logger.Trace("callback for service type %v is nil ", key)
+		logger.Trace("callback for service is nil ", logger.Fields{"type": key})
 		return false
 	}
 
@@ -128,7 +128,7 @@ func (sf *ServiceFactory) OnServiceHandle(session defs.ISession, packet defs.IPa
 				session.WritePacket(p)
 			}
 		default:
-			logger.Warn("unexpected type %T", iErrno)
+			logger.Warn("unexpected type")
 		}
 	}
 	return true
@@ -179,7 +179,7 @@ func (sf *ServiceFactory) suitableMethods(rcvr interface{}, rcvr2 *reflect.Value
 		replyType := mtype.In(3)
 
 		if replyType.Kind() != reflect.Ptr {
-			logger.Error("method %v reply type not a pointer: %v", nameVal, replyType)
+			logger.Error("method reply type not a pointer")
 			continue
 		}
 		if !sf.IsExportedOrBuiltinType(replyType) {
@@ -188,7 +188,7 @@ func (sf *ServiceFactory) suitableMethods(rcvr interface{}, rcvr2 *reflect.Value
 
 		returnType := mtype.Out(0)
 		if returnType != TypeOfInt {
-			logger.Error("method %v returns: %v not error", nameVal, returnType.String())
+			logger.Error("method returns: not int")
 			continue
 		}
 
