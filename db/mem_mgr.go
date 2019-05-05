@@ -24,6 +24,7 @@ type MemMgr struct {
 	pks       []string
 	iks       []string
 	log       *logger.Logger
+	dbMgr     IDBMgr
 }
 
 func NewMemMgr(rc *RedisClient, initPK bool, dbName, tableName string, pks []string, iks ...string) *MemMgr {
@@ -38,12 +39,17 @@ func NewMemMgr(rc *RedisClient, initPK bool, dbName, tableName string, pks []str
 		key:       fmt.Sprintf("%s:%s", dbName, tableName),
 		pKey:      fmt.Sprintf("%s:%s:pk", dbName, tableName),
 		log:       logger.NewLogger(logger.TRACE),
+		dbMgr:     GetDB(dbName),
+	}
+
+	if mm.dbMgr == nil {
+		return nil
 	}
 
 	if mm.log == nil {
 		return nil
 	}
-	mm.log.SetRotation(time.Hour * 24 * 30, time.Hour * 24, memLogPath)
+	mm.log.SetRotation(time.Hour*24*30, time.Hour*24, memLogPath)
 
 	n := len(pks) - 1
 	var str strings.Builder
@@ -68,9 +74,10 @@ func NewMemMgr(rc *RedisClient, initPK bool, dbName, tableName string, pks []str
 }
 
 func (mm *MemMgr) initPKValue() {
-	pkValue := 0
-	//todo db
-	//pkValue =
+	pkValue := mm.dbMgr.QueryPrimaryKey(mm.pk, mm.tableName)
+	if pkValue == 0 {
+		return
+	}
 	_, err := mm.rc.Set(mm.pKey, pkValue)
 	if err != nil {
 		mm.log.Error("init pk value failed")
