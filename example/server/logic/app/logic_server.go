@@ -71,8 +71,19 @@ func (gs *LogicServer) onMsg(conn defs.IConnection, packet defs.IPacket) {
 
 	sessionId := packet.GetSessionId()
 	session := network.GetSession(sessionId)
+
+	if packet.GetStatus() == -1 {
+		network.DelSession(sessionId)
+		return
+	}
+
 	if session == nil {
 		session = network.NewSession(conn, sessionId, true)
+		if session == nil {
+			conn.Close()
+			return
+		}
+		network.AddSession(session)
 	}
 	session.OnService(packet)
 }

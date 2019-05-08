@@ -54,7 +54,9 @@ func (gs *GateServer) onNewConn(conn defs.IConnection) {
 }
 
 func (gs *GateServer) onDisconn(conn defs.IConnection) {
-	network.DelSession(conn.GetId())
+	sessionId := conn.GetId()
+	gs.disconn(sessionId)
+	network.DelSession(sessionId)
 }
 
 func (gs *GateServer) onMsg(conn defs.IConnection, packet defs.IPacket) {

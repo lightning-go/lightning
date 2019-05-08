@@ -22,14 +22,15 @@ type LogConfig struct {
 }
 
 type ServerConfig struct {
-	Name    string                `json:"name"`
-	Host    string                `json:"host"`
-	Port    int                   `json:"port"`
-	Log     map[string]*LogConfig `json:"log"`
-	Remotes []string              `json:"remotes"`
-
-	MaxConn       int `json:"maxConn"`
-	MaxPacketSize int `json:"maxPacketSize"`
+	Name          string                `json:"name"`
+	Host          string                `json:"host"`
+	Port          int                   `json:"port"`
+	MaxConn       int                   `json:"maxConn"`
+	MaxPacketSize int                   `json:"maxPacketSize"`
+	Log           map[string]*LogConfig `json:"log"`
+	Remotes       []string              `json:"remotes"`
+	HostList      []string              `json:"hostList"`
+	Timeout       int                   `json:"timeout"`
 }
 
 func (sc *ServerConfig) GetDefaultLogConf() *LogConfig {

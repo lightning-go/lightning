@@ -3,6 +3,7 @@
     "name": "gate",
     "host": "127.0.0.1",
     "port": 22001,
+    "maxConn": 3000,
     "remotes": ["logic"],
     "log": {
       "default": {
@@ -18,6 +19,7 @@
     "name": "logic",
     "host": "127.0.0.1",
     "port": 23001,
+    "maxConn": 3000,
     "log": {
       "default": {
         "logLevel": "trace",
@@ -26,6 +28,13 @@
         "rotationTime": 1440
       }
     }
+  },
+
+  "etcd": {
+    "hostList": [
+      "127.0.0.1:2379"
+    ],
+    "timeout": 0
   }
 
 

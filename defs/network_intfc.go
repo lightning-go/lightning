@@ -33,6 +33,11 @@ type IServer interface {
 	SetAuthorizedCallback(AuthorizedCallback)
 }
 
+type IWSServer interface {
+	IServer
+	SetMsgType(int)
+}
+
 type IClient interface {
 	Name() string
 	Connect() IConnection
@@ -68,10 +73,11 @@ type ITcpConnection interface {
 
 type IWSConnection interface {
 	GetConn() *websocket.Conn
+	GetMsgType() int
 }
 
 type ISession interface {
+	Close() bool
 	WritePacket(IPacket)
 	WriteData([]byte)
 }
-

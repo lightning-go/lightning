@@ -21,6 +21,7 @@ type WSServer struct {
 	path         string
 	name         string
 	maxConn      int
+	msgType      int
 	connMgr      *ConnectionMgr
 	upgrader     *websocket.Upgrader
 	httpSrv      *http.Server
@@ -39,12 +40,17 @@ func NewWSServer(name, addr string, maxConn int, path ...string) *WSServer {
 		addr:     addr,
 		path:     "/",
 		maxConn:  maxConn,
+		msgType:  websocket.TextMessage,
 		connMgr:  NewConnMgr(),
 	}
 	if len(path) > 0 && len(path[0]) > 0 {
 		wss.path = path[0]
 	}
 	return wss
+}
+
+func (ws *WSServer) SetMsgType(msgType int) {
+	ws.msgType = msgType
 }
 
 func (ws *WSServer) SetCodec(codec defs.ICodec) {
@@ -158,6 +164,7 @@ func (ws *WSServer) newConnection(conn *websocket.Conn) *WSConnection {
 	if wsConn == nil {
 		return nil
 	}
+	wsConn.SetMsgType(ws.msgType)
 	wsConn.SetCodec(ws.codec)
 	wsConn.SetIOModule(ws.ioModule)
 	wsConn.SetCloseCallback(ws.closeConnection)

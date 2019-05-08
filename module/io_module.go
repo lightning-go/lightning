@@ -129,7 +129,7 @@ func (ioModule *IOModule) enableRead() {
 			default:
 				err := ioModule.readHandle()
 				if err != nil {
-					if err != io.EOF && err != ErrConnClosed {
+					if err != io.EOF &&	err != ErrConnClosed {
 						logger.Error(err)
 					}
 					break QUIT

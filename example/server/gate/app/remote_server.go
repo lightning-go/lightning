@@ -63,3 +63,15 @@ func (gs *GateServer) onClientMsg(conn defs.IConnection, packet defs.IPacket) {
 	}
 	remote.SendPacket(packet)
 }
+
+func (gs *GateServer) disconn(sessionId string) {
+	remote := gs.GetRemoteClient("logic")
+	if remote == nil {
+		return
+	}
+	p := &defs.Packet{}
+	p.SetSessionId(sessionId)
+	p.SetData(utils.NullData)
+	p.SetStatus(-1)
+	remote.SendPacket(p)
+}

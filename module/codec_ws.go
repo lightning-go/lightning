@@ -13,7 +13,8 @@ import (
 )
 
 type WSCodec struct {
-	conn *websocket.Conn
+	conn    *websocket.Conn
+	msgType int
 }
 
 func NewWSCodec() *WSCodec {
@@ -33,6 +34,7 @@ func (wsCodec *WSCodec) Init(conn defs.IConnection) bool {
 		return false
 	}
 	wsCodec.conn = c
+	wsCodec.msgType = iWSConn.GetMsgType()
 	return true
 }
 func (wsCodec *WSCodec) Write(packet defs.IPacket) error {
@@ -41,7 +43,7 @@ func (wsCodec *WSCodec) Write(packet defs.IPacket) error {
 		return err
 	}
 
-	err = wsCodec.conn.WriteMessage(websocket.BinaryMessage, packet.GetData())
+	err = wsCodec.conn.WriteMessage(wsCodec.msgType, packet.GetData())
 	if err != nil {
 		err = wsCodec.conn.WriteMessage(websocket.CloseMessage, []byte{})
 	}
@@ -49,15 +51,14 @@ func (wsCodec *WSCodec) Write(packet defs.IPacket) error {
 }
 
 func (wsCodec *WSCodec) Read() (defs.IPacket, error) {
-	_, data, err := wsCodec.conn.ReadMessage()
+	typ, data, err := wsCodec.conn.ReadMessage()
 	if err != nil {
-		return nil, err
+		return nil, ErrConnClosed
 	}
+	typ = typ
 
 	p := &defs.Packet{}
 	p.SetData(data)
 
 	return p, nil
 }
-
-

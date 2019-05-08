@@ -29,6 +29,7 @@ type WSConnection struct {
 	isClosed      int32
 	isAuthorized  bool
 	ctx           context.Context
+	msgType       int
 }
 
 func NewWSConnection(conn *websocket.Conn) *WSConnection {
@@ -45,6 +46,14 @@ func NewWSConnection(conn *websocket.Conn) *WSConnection {
 		ctx:          utils.NewContextMap(context.Background()),
 	}
 	return wsc
+}
+
+func (wsc *WSConnection) SetMsgType(msgType int) {
+	wsc.msgType = msgType
+}
+
+func (wsc *WSConnection) GetMsgType() int {
+	return wsc.msgType
 }
 
 func (wsc *WSConnection) SetCodec(codec defs.ICodec) {
@@ -146,6 +155,8 @@ func (wsc *WSConnection) Close() bool {
 		wsc.ioModule.OnConnectionLost()
 	}
 
+	//
+	wsc.conn.WriteMessage(websocket.CloseMessage, []byte{})
 	err := wsc.conn.Close()
 	if err != nil {
 		logger.Warn(err)
