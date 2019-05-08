@@ -6,12 +6,11 @@
 package selector
 
 import (
-	"github.com/lightning-go/lightning/defs"
 	"sync"
 )
 
 type SessionData struct {
-	conn   defs.IConnection `json:"-"`
+	Id     int              `json:"id"`
 	Host   string           `json:"host"`
 	Name   string           `json:"name"`
 	Type   int              `json:"type"`
@@ -31,17 +30,16 @@ func NewWeightSelector() *WeightSelector {
 }
 
 func (selector *WeightSelector) Add(data *SessionData) {
-	if data == nil || data.conn == nil {
+	if data == nil {
 		return
 	}
 
 	selector.mux.Lock()
 	for _, sd := range selector.sessions {
-		if sd == nil || sd.conn == nil {
+		if sd == nil {
 			continue
 		}
-		if sd.conn.GetId() == data.conn.GetId() {
-			sd.conn = data.conn
+		if sd.Id == data.Id {
 			sd.Host = data.Host
 			sd.Name = data.Name
 			sd.Type = data.Type
@@ -55,22 +53,25 @@ func (selector *WeightSelector) Add(data *SessionData) {
 	selector.mux.Unlock()
 }
 
-func (selector *WeightSelector) Del(key string) {
+func (selector *WeightSelector) Del(key int) {
 	selector.mux.Lock()
 
 	count := len(selector.sessions)
 	if count == 1 {
-		selector.sessions = selector.sessions[:0]
-		selector.mux.Unlock()
-		return
+		session := selector.sessions[0]
+		if session != nil && session.Id == key {
+			selector.sessions = selector.sessions[:0]
+			selector.mux.Unlock()
+			return
+		}
 	}
 
 	delIdx := -1
 	for idx, session := range selector.sessions {
-		if session == nil || session.conn == nil {
+		if session == nil {
 			continue
 		}
-		if session.conn.GetId() == key {
+		if session.Id == key {
 			delIdx = idx
 			break
 		}
@@ -94,13 +95,13 @@ func (selector *WeightSelector) Del(key string) {
 	selector.mux.Unlock()
 }
 
-func (selector *WeightSelector) Update(key string, weight int) {
+func (selector *WeightSelector) Update(key int, weight int) {
 	selector.mux.Lock()
 	for _, sd := range selector.sessions {
-		if sd == nil || sd.conn == nil {
+		if sd == nil {
 			continue
 		}
-		if sd.conn.GetId() == key {
+		if sd.Id == key {
 			sd.Weight = weight
 			selector.mux.Unlock()
 			return
@@ -126,7 +127,7 @@ func (selector *WeightSelector) SelectWeightLeast() *SessionData {
 	for i := 0; i < sessionCount; i++ {
 		idx := (start + i) % sessionCount
 		s := sessionList[idx]
-		if s == nil || s.conn == nil {
+		if s == nil {
 			continue
 		}
 
