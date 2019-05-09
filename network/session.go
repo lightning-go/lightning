@@ -38,7 +38,8 @@ func NewSession(conn defs.IConnection, sessionId string, async ...bool) *Session
 }
 
 func (s *Session) Close() bool {
-	return s.conn.Close()
+	close(s.packetData)
+	return true
 }
 
 func (s *Session) GetSessionId() string {
