@@ -29,9 +29,9 @@ func NewWeightSelector() *WeightSelector {
 	}
 }
 
-func (selector *WeightSelector) Add(data *SessionData) {
+func (selector *WeightSelector) Add(data *SessionData) (new bool) {
 	if data == nil {
-		return
+		return false
 	}
 
 	selector.mux.Lock()
@@ -45,12 +45,13 @@ func (selector *WeightSelector) Add(data *SessionData) {
 			sd.Type = data.Type
 			sd.Weight = data.Weight
 			selector.mux.Unlock()
-			return
+			return false
 		}
 	}
 
 	selector.sessions = append(selector.sessions, data)
 	selector.mux.Unlock()
+	return true
 }
 
 func (selector *WeightSelector) Del(key int) {
@@ -118,6 +119,8 @@ func (selector *WeightSelector) SelectWeightLeast() *SessionData {
 	sessionCount := len(sessionList)
 	if sessionCount == 0 {
 		return nil
+	} else if sessionCount == 1 {
+		return sessionList[0]
 	}
 
 	start := (selector.lastIdx + 1) % sessionCount
