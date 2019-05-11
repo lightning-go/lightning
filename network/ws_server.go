@@ -22,6 +22,7 @@ type WSServer struct {
 	name         string
 	maxConn      int
 	msgType      int
+	enablePong   bool
 	connMgr      *ConnectionMgr
 	upgrader     *websocket.Upgrader
 	httpSrv      *http.Server
@@ -35,18 +36,23 @@ type WSServer struct {
 
 func NewWSServer(name, addr string, maxConn int, path ...string) *WSServer {
 	wss := &WSServer{
-		listener: ListenTcp(addr),
-		name:     name,
-		addr:     addr,
-		path:     "/",
-		maxConn:  maxConn,
-		msgType:  websocket.TextMessage,
-		connMgr:  NewConnMgr(),
+		listener:   ListenTcp(addr),
+		name:       name,
+		addr:       addr,
+		path:       "/",
+		maxConn:    maxConn,
+		msgType:    websocket.TextMessage,
+		enablePong: false,
+		connMgr:    NewConnMgr(),
 	}
 	if len(path) > 0 && len(path[0]) > 0 {
 		wss.path = path[0]
 	}
 	return wss
+}
+
+func (ws *WSServer) EnablePong(val bool) {
+	ws.enablePong = val
 }
 
 func (ws *WSServer) SetMsgType(msgType int) {
@@ -137,11 +143,14 @@ func (ws *WSServer) connectionHandle(conn *websocket.Conn) {
 	}
 
 	conn.SetReadLimit(int64(conf.GetGlobalVal().MaxPacketSize))
-	conn.SetReadDeadline(time.Now().Add(conf.GetGlobalVal().PongWait))
-	conn.SetPongHandler(func(string) error {
+
+	if ws.enablePong {
 		conn.SetReadDeadline(time.Now().Add(conf.GetGlobalVal().PongWait))
-		return nil
-	})
+		conn.SetPongHandler(func(string) error {
+			conn.SetReadDeadline(time.Now().Add(conf.GetGlobalVal().PongWait))
+			return nil
+		})
+	}
 
 	wsConn := ws.newConnection(conn)
 	if wsConn == nil {
