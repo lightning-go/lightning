@@ -13,6 +13,7 @@ import (
 	"github.com/lightning-go/lightning/example/server/logic/service"
 	"github.com/lightning-go/lightning/module"
 	"sync"
+	"github.com/lightning-go/lightning/example/server/global"
 )
 
 type LogicServer struct {
@@ -21,52 +22,55 @@ type LogicServer struct {
 }
 
 func NewGameServer(name, path string) *LogicServer {
-	gs := &LogicServer{
+	ls := &LogicServer{
 		Server:         network.NewServer(name, path),
 		clientSessions: &sync.Map{}, //make(map[string]map[string]struct{}),
 	}
-	gs.init()
-	gs.initService()
-	return gs
+	ls.init()
+	ls.initRemote()
+	ls.initService()
+	return ls
 }
 
-func (gs *LogicServer) init() {
-	gs.SetCodec(&module.HeadCodec{})
-	gs.SetConnCallback(gs.onConn)
-	gs.SetMsgCallback(gs.onMsg)
-	gs.SetAuthorizedCallback(gs.onAuthorized)
+func (ls *LogicServer) init() {
+	ls.SetCodec(&module.HeadCodec{})
+	ls.SetConnCallback(ls.onConn)
+	ls.SetMsgCallback(ls.onMsg)
+	ls.SetAuthorizedCallback(ls.onAuthorized)
 }
 
-func (gs *LogicServer) initService() {
+func (ls *LogicServer) initService() {
 	utils.RegisterService(&service.Service{})
 }
 
-func (gs *LogicServer) onConn(conn defs.IConnection) {
+func (ls *LogicServer) onConn(conn defs.IConnection) {
 	isClosed := conn.IsClosed()
 	logger.Tracef("%v server %v <- %v is %v",
-		gs.Name(), conn.LocalAddr(), conn.RemoteAddr(),
+		ls.Name(), conn.LocalAddr(), conn.RemoteAddr(),
 		utils.IF(isClosed, "down", "up").(string))
 
 	if isClosed {
-		gs.onDisconn(conn)
+		ls.onDisconn(conn)
 	} else {
-		gs.onNewConn(conn)
+		ls.onNewConn(conn)
 	}
 }
 
-func (gs *LogicServer) onNewConn(conn defs.IConnection) {
+func (ls *LogicServer) onNewConn(conn defs.IConnection) {
 }
 
-func (gs *LogicServer) onDisconn(conn defs.IConnection) {
-	gs.delClientSession(conn.GetId())
+func (ls *LogicServer) onDisconn(conn defs.IConnection) {
+	ls.delClientSession(conn.GetId())
 }
 
-func (gs *LogicServer) onAuthorized(conn defs.IConnection, packet defs.IPacket) bool {
+func (ls *LogicServer) onAuthorized(conn defs.IConnection, packet defs.IPacket) bool {
 	ok, _ := service.AuthorizedCallback(conn, packet)
 	return ok
 }
 
-func (gs *LogicServer) onMsg(conn defs.IConnection, packet defs.IPacket) {
+func (ls *LogicServer) onMsg(conn defs.IConnection, packet defs.IPacket) {
+	logger.Tracef("onMsg: %v - %v - %v", packet.GetSessionId(), packet.GetId(), string(packet.GetData()))
+
 	defer func() {
 		if err := recover(); err != nil {
 			logger.Errorf("panic error : %v", err)
@@ -76,10 +80,11 @@ func (gs *LogicServer) onMsg(conn defs.IConnection, packet defs.IPacket) {
 	sId := conn.GetId()
 	sessionId := packet.GetSessionId()
 	session := network.GetSession(sessionId)
+	status := packet.GetStatus()
 
-	if packet.GetStatus() == -1 {
+	if status == global.RESULT_DISCONN {
 		network.DelSession(sessionId)
-		gs.delSession(sId, sessionId)
+		ls.delSession(sId, sessionId)
 		return
 	}
 
@@ -89,13 +94,13 @@ func (gs *LogicServer) onMsg(conn defs.IConnection, packet defs.IPacket) {
 			return
 		}
 		network.AddSession(session)
-		gs.addClientSession(sId, sessionId)
+		ls.addClientSession(sId, sessionId)
 	}
 
 	session.OnService(packet)
 }
 
-func (gs *LogicServer) addClientSession(sId, sessionId string) {
+func (ls *LogicServer) addClientSession(sId, sessionId string) {
 	//sessions, ok := gs.clientSessions[sId]
 	//if !ok || sessions == nil {
 	//	sessions := make(map[string]struct{})
@@ -108,10 +113,10 @@ func (gs *LogicServer) addClientSession(sId, sessionId string) {
 	f := func() {
 		s := &sync.Map{}
 		s.Store(sessionId, struct{}{})
-		gs.clientSessions.Store(sId, s)
+		ls.clientSessions.Store(sId, s)
 	}
 
-	iSessions, ok := gs.clientSessions.Load(sId)
+	iSessions, ok := ls.clientSessions.Load(sId)
 	if !ok {
 		f()
 		return
@@ -125,7 +130,7 @@ func (gs *LogicServer) addClientSession(sId, sessionId string) {
 	sessions.Store(sessionId, struct{}{})
 }
 
-func (gs *LogicServer) delClientSession(sId string) {
+func (ls *LogicServer) delClientSession(sId string) {
 	//sessions, ok := gs.clientSessions[sId]
 	//if !ok || sessions == nil {
 	//	return
@@ -140,7 +145,7 @@ func (gs *LogicServer) delClientSession(sId string) {
 	//	network.DelSession(sessionId)
 	//}
 
-	iSessions, ok := gs.clientSessions.Load(sId)
+	iSessions, ok := ls.clientSessions.Load(sId)
 	if !ok {
 		return
 	}
@@ -164,8 +169,8 @@ func (gs *LogicServer) delClientSession(sId string) {
 
 }
 
-func (gs *LogicServer) delSession(sId, sessionId string) {
-	iSessions, ok := gs.clientSessions.Load(sId)
+func (ls *LogicServer) delSession(sId, sessionId string) {
+	iSessions, ok := ls.clientSessions.Load(sId)
 	if !ok {
 		return
 	}

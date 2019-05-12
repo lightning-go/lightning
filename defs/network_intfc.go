@@ -77,7 +77,9 @@ type IWSConnection interface {
 }
 
 type ISession interface {
+	GetSessionId() string
 	Close() bool
 	WritePacket(IPacket)
 	WriteData([]byte)
+	OnService(packet IPacket) bool
 }

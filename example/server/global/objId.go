@@ -18,6 +18,8 @@ const (
 )
 
 const (
-	RESULT_OK     = iota
+	RESULT_OK           = iota
 	RESULT_FAILED
+	RESULT_DISCONN
+	RESULT_SYNC_SESSION
 )

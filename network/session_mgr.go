@@ -7,6 +7,7 @@ package network
 
 import (
 	"sync"
+	"github.com/lightning-go/lightning/defs"
 )
 
 var defaultSessionMgr = NewSessionMgr()
@@ -15,11 +16,11 @@ func GetSessionMgr() *SessionMgr {
 	return defaultSessionMgr
 }
 
-func AddSession(s *Session) {
+func AddSession(s defs.ISession) {
 	defaultSessionMgr.Add(s)
 }
 
-func GetSession(sessionId string) *Session {
+func GetSession(sessionId string) defs.ISession {
 	return defaultSessionMgr.Get(sessionId)
 }
 
@@ -27,14 +28,18 @@ func DelSession(sessionId string) {
 	defaultSessionMgr.Del(sessionId)
 }
 
+func RangeSession(f func(sId string, s defs.ISession)) {
+	defaultSessionMgr.Range(f)
+}
+
 type SessionMgr struct {
 	mux      sync.RWMutex
-	sessions map[string]*Session
+	sessions map[string]defs.ISession
 }
 
 func NewSessionMgr() *SessionMgr {
 	return &SessionMgr{
-		sessions: make(map[string]*Session),
+		sessions: make(map[string]defs.ISession),
 	}
 }
 
@@ -45,7 +50,7 @@ func (sm *SessionMgr) Count() int {
 	return count
 }
 
-func (sm *SessionMgr) Add(s *Session) {
+func (sm *SessionMgr) Add(s defs.ISession) {
 	if s == nil {
 		return
 	}
@@ -63,7 +68,7 @@ func (sm *SessionMgr) Del(sessionId string) {
 	sm.mux.Unlock()
 }
 
-func (sm *SessionMgr) Get(sessionId string) *Session {
+func (sm *SessionMgr) Get(sessionId string) defs.ISession {
 	sm.mux.RLock()
 	session, ok := sm.sessions[sessionId]
 	if !ok {
@@ -74,4 +79,11 @@ func (sm *SessionMgr) Get(sessionId string) *Session {
 	return session
 }
 
-
+func (sm *SessionMgr) Range(f func(sId string, s defs.ISession)) {
+	sm.mux.RLock()
+	tmpSessions := sm.sessions
+	sm.mux.RUnlock()
+	for sessionId, session := range tmpSessions {
+		f(sessionId, session)
+	}
+}

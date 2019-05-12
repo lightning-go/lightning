@@ -57,6 +57,6 @@ func TestGame(t *testing.T)  {
 	p.SetData(data)
 	client.SendPacket(p)
 
-	time.Sleep(time.Second * 3)
+	time.Sleep(time.Second * 13)
 	client.Close()
 }

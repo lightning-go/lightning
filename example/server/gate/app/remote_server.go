@@ -72,6 +72,6 @@ func (gs *GateServer) disconn(sessionId string) {
 	p := &defs.Packet{}
 	p.SetSessionId(sessionId)
 	p.SetData(utils.NullData)
-	p.SetStatus(-1)
+	p.SetStatus(global.RESULT_DISCONN)
 	remote.SendPacket(p)
 }
