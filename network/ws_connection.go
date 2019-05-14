@@ -43,6 +43,7 @@ func NewWSConnection(conn *websocket.Conn) *WSConnection {
 		connId:       id.String(),
 		conn:         conn,
 		isAuthorized: false,
+		msgType:      websocket.TextMessage,
 		ctx:          utils.NewContextMap(context.Background()),
 	}
 	return wsc

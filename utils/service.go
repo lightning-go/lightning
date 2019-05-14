@@ -34,10 +34,17 @@ type ServiceFactory struct {
 	parseMethodNameCallback defs.ParseMethodNameCallback
 	parseReqDataCallback    defs.ParseReqDataCallback
 	parseAckDataCallback    defs.ParseAckDataCallback
+	autoReply               bool
 }
 
 func NewServiceFactory() *ServiceFactory {
-	return &ServiceFactory{}
+	return &ServiceFactory{
+		autoReply: true,
+	}
+}
+
+func (sf *ServiceFactory) SetAutoReply(val bool) {
+	sf.autoReply = val
 }
 
 func (sf *ServiceFactory) SetParseMethodNameCallback(cb defs.ParseMethodNameCallback) {
@@ -92,7 +99,6 @@ func (sf *ServiceFactory) OnServiceHandle(session defs.ISession, packet defs.IPa
 		return false
 	}
 	req := reflect.New(typ.ArgType.Elem())
-	ack := reflect.New(typ.ReplyType.Elem())
 
 	if sf.parseReqDataCallback == nil {
 		if !ParseReqDataByJson(packet.GetData(), req.Interface()) {
@@ -107,6 +113,12 @@ func (sf *ServiceFactory) OnServiceHandle(session defs.ISession, packet defs.IPa
 	}
 
 	function := typ.Method.Func
+	if !sf.autoReply {
+		function.Call([]reflect.Value{sf.msgRCVR, reflect.ValueOf(session), req})
+		return true
+	}
+
+	ack := reflect.New(typ.ReplyType.Elem())
 	result := function.Call([]reflect.Value{sf.msgRCVR, reflect.ValueOf(session), req, ack})
 	if result != nil && len(result) > 0 {
 		iErrno := result[0].Interface()
@@ -171,19 +183,24 @@ func (sf *ServiceFactory) suitableMethods(rcvr interface{}, rcvr2 *reflect.Value
 		}
 
 		paramNum := mtype.NumIn()
-		if paramNum != 4 {
+		if paramNum != 4 && sf.autoReply {
+			continue
+		} else if paramNum != 3 && !sf.autoReply {
 			continue
 		}
 
 		argType := mtype.In(2)
-		replyType := mtype.In(3)
+		var replyType reflect.Type
 
-		if replyType.Kind() != reflect.Ptr {
-			logger.Error("method reply type not a pointer")
-			continue
-		}
-		if !sf.IsExportedOrBuiltinType(replyType) {
-			continue
+		if paramNum == 4 {
+			replyType = mtype.In(3)
+			if replyType.Kind() != reflect.Ptr {
+				logger.Error("method reply type not a pointer")
+				continue
+			}
+			if !sf.IsExportedOrBuiltinType(replyType) {
+				continue
+			}
 		}
 
 		returnType := mtype.Out(0)
@@ -204,7 +221,10 @@ func (sf *ServiceFactory) suitableMethods(rcvr interface{}, rcvr2 *reflect.Value
 	return nil
 }
 
-func RegisterService(rcvr interface{}) {
+func RegisterService(rcvr interface{}, autoReply ...bool) {
+	if len(autoReply) > 0 {
+		GetMsgFactory().SetAutoReply(autoReply[0])
+	}
 	GetMsgFactory().Register(rcvr)
 }
 

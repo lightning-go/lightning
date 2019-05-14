@@ -86,9 +86,9 @@ func (tcpClient *TcpClient) connectionHandle(conn net.Conn) {
 	tcpClient.connected.Done()
 }
 
-func (tcpClient *TcpClient) Close() {
+func (tcpClient *TcpClient) Close() bool {
 	tcpClient.retry = false
-	tcpClient.conn.Close()
+	return tcpClient.conn.Close()
 }
 
 func (tcpClient *TcpClient) CloseConnection(conn defs.IConnection) {

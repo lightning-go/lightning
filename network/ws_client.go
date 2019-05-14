@@ -20,6 +20,7 @@ type WSClient struct {
 	name         string
 	addr         string
 	path         string
+	msgType      int
 	codec        defs.ICodec
 	ioModule     defs.IIOModule
 	connCallback defs.ConnCallback
@@ -36,6 +37,7 @@ func NewWSClient(name, addr string, path ...string) *WSClient {
 		name:      name,
 		addr:      addr,
 		retry:     true,
+		msgType:   websocket.TextMessage,
 		close:     make(chan bool),
 	}
 	if len(path) > 0 {
@@ -76,6 +78,7 @@ func (wsclient *WSClient) connectionHandle(conn *websocket.Conn) {
 	if wsclient.conn == nil {
 		return
 	}
+	wsclient.conn.SetMsgType(wsclient.msgType)
 	wsclient.conn.SetCodec(wsclient.codec)
 	wsclient.conn.SetIOModule(wsclient.ioModule)
 	wsclient.conn.SetCloseCallback(wsclient.CloseConnection)
@@ -89,9 +92,9 @@ func (wsclient *WSClient) connectionHandle(conn *websocket.Conn) {
 	wsclient.connected.Done()
 }
 
-func (wsclient *WSClient) Close() {
+func (wsclient *WSClient) Close() bool {
 	wsclient.retry = false
-	wsclient.conn.Close()
+	return wsclient.conn.Close()
 }
 
 func (wsclient *WSClient) CloseConnection(conn defs.IConnection) {

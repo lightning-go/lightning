@@ -41,7 +41,7 @@ type IWSServer interface {
 type IClient interface {
 	Name() string
 	Connect() IConnection
-	Close()
+	Close() bool
 	SetRetry(bool)
 	SetCodec(ICodec)
 	SetIOModule(IIOModule)
