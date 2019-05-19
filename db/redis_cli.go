@@ -130,3 +130,31 @@ func (rc *RedisClient) HDel(v ...interface{}) (interface{}, error) {
 	conn.Close()
 	return d, err
 }
+
+func (rc *RedisClient) PipeSet(conn redis.Conn, key, value interface{}) {
+	conn.Send("SET", key, value)
+}
+
+func (rc *RedisClient) PipeHSet(conn redis.Conn, key, field, value interface{}) {
+	conn.Send("HSET", key, field, value)
+}
+
+func (rc *RedisClient) PipeZAdd(conn redis.Conn, v ...interface{}) {
+	conn.Send("ZADD", v...)
+}
+
+func (rc *RedisClient) PipeHGet(conn redis.Conn, key, field interface{}) {
+	conn.Send("HGET", key, field)
+}
+
+func (rc *RedisClient) PipeHDel(conn redis.Conn, v ...interface{}) {
+	conn.Send("HDEL", v...)
+}
+
+func (rc *RedisClient) PipeEnd(conn redis.Conn) {
+	conn.Flush()
+}
+
+func (rc *RedisClient) PipeRecv(conn redis.Conn) (interface{}, error) {
+	return conn.Receive()
+}

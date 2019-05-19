@@ -72,6 +72,7 @@ func (l *Logger) SetRotation(maxAge, rotationTime time.Duration, pathFile string
 	}
 
 	ifHook := lfshook.NewHook(lfshook.WriterMap{
+		log.DebugLevel: w,
 		log.InfoLevel:  w,
 		log.WarnLevel:  w,
 		log.ErrorLevel: w,

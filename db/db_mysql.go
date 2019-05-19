@@ -34,40 +34,55 @@ func (mm *MysqlMgr) QueryPrimaryKey(pk, tableName string) uint64 {
 	return id
 }
 
-func (mm *MysqlMgr) QueryOneCond(tableName, where string) *sql.Row {
+func (mm *MysqlMgr) QueryOneCond(tableName, where string, f func(*sql.Row)) {
+	if f == nil {
+		return
+	}
 	s := "SELECT * FROM ? WHERE ?;"
 	row := mm.dbConn.Raw(s, tableName, where).Row()
-	return row
+	f(row)
 }
 
-func (mm *MysqlMgr) QueryCond(tableName, where string) *sql.Rows {
+func (mm *MysqlMgr) QueryCond(tableName, where string, f func(*sql.Rows)) {
+	if f == nil {
+		return
+	}
 	s := "SELECT * FROM ? WHERE ?;"
 	rows, err := mm.dbConn.Raw(s, tableName, where).Rows()
 	if err != nil {
 		mm.log.Error(err)
-		return nil
+		return
 	}
-	return rows
+	f(rows)
+	rows.Close()
 }
 
-func (mm *MysqlMgr) QueryKeyCond(tableName, key, where string) *sql.Rows {
+func (mm *MysqlMgr) QueryKeyCond(tableName, key, where string, f func(*sql.Rows)) {
+	if f == nil {
+		return
+	}
 	s := "SELECT ? FROM ? WHERE ?;"
 	rows, err := mm.dbConn.Raw(s, key, tableName, where).Rows()
 	if err != nil {
 		mm.log.Error(err)
-		return nil
+		return
 	}
-	return rows
+	f(rows)
+	rows.Close()
 }
 
-func (mm *MysqlMgr) Query(tableName string) *sql.Rows {
+func (mm *MysqlMgr) Query(tableName string, f func(*sql.Rows)) {
+	if f == nil {
+		return
+	}
 	s := "SELECT * FROM ?;"
 	rows, err := mm.dbConn.Raw(s, tableName).Rows()
 	if err != nil {
 		mm.log.Error(err)
-		return nil
+		return
 	}
-	return rows
+	f(rows)
+	rows.Close()
 }
 
 func (mm *MysqlMgr) Insert(tableName, fields, value string) error {

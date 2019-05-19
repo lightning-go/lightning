@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"github.com/lightning-go/lightning/logger"
 	"time"
+	"database/sql"
 )
 
 const dbLogPath = "./logs/db.log"
@@ -17,6 +18,13 @@ const dbLogPath = "./logs/db.log"
 type IDBMgr interface {
 	Close()
 	QueryPrimaryKey(pk, tableName string) uint64
+	QueryOneCond(tableName, where string, f func(*sql.Row))
+	QueryCond(tableName, where string, f func(*sql.Rows))
+	QueryKeyCond(tableName, key, where string, f func(*sql.Rows))
+	Query(tableName string, f func(*sql.Rows))
+	Insert(tableName, fields, value string) error
+	Update(tableName, fields, value string) error
+	Delete(tableName, where string) error
 }
 
 type DBMgr struct {
