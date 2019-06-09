@@ -12,6 +12,7 @@ import (
 	"time"
 	"database/sql"
 	"github.com/json-iterator/go"
+	"strconv"
 )
 
 const memLogPath = "./logs/redis.log"
@@ -674,6 +675,292 @@ func (mm *MemMgr) DelDataByPK(key string) {
 }
 
 func (mm *MemMgr) DelDataByIK(ik, key string) {
-	//todo
+	memMode := mm.queryIK(ik, key, true)
+	if memMode == nil {
+		mm.log.Error("key Error\n", logger.Fields{
+			"key": key,
+		})
+		return
+	}
+
+	conn := mm.rc.GetConn()
+	if conn == nil {
+		return
+	}
+
+	for _, k := range mm.iks {
+		v, ok := memMode.Data[k]
+		if ok {
+			keyName := mm.produceFieldKey(k, v.(string))
+			mm.rc.PipeHDel(conn, mm.key, keyName)
+		}
+	}
+
+	keyName := mm.produceFieldKey(mm.pk, key)
+	mm.rc.PipeHDel(conn, mm.key, keyName)
+
+	mm.rc.PipeEnd(conn)
+	mm.rc.CloseConn(conn)
 }
 
+func (mm *MemMgr) DelByIK(ik, key string) {
+	memMode := mm.QueryByIK(ik, key)
+	if memMode == nil {
+		mm.log.Error("key Error\n", logger.Fields{
+			"key": key,
+		})
+		return
+	}
+	memMode.State = MEM_STATE_DEL
+	mm.updateData(memMode)
+}
+
+func (mm *MemMgr) GetAllKeys() []string {
+	v, err := mm.rc.HGetAll(mm.key)
+	if err != nil || v == nil {
+		mm.log.Error(err)
+		return nil
+	}
+
+	array, ok := v.([]interface{})
+	if !ok {
+		mm.log.Error("get keys type error")
+		return nil
+	}
+
+	keys := make([]string, 0)
+	for _, v := range array {
+		record, ok := v.([]byte)
+		if !ok {
+			continue
+		}
+		pkLen := len(mm.pk) + 1
+		if len(record) < pkLen {
+			continue
+		}
+		recordHead := record[:pkLen]
+		keyHead := fmt.Sprintf("%s:", mm.pk)
+		if !strings.EqualFold(string(recordHead), keyHead) {
+			continue
+		}
+		keys = append(keys, string(record))
+	}
+
+	return keys
+}
+
+func (mm *MemMgr) Sync() {
+	keys := mm.GetAllKeys()
+	if keys == nil {
+		return
+	}
+
+	conn := mm.rc.GetConn()
+	if conn == nil {
+		return
+	}
+
+	for _, k := range keys {
+		mm.rc.PipeHGet(conn, mm.key, k)
+	}
+	mm.rc.PipeEnd(conn)
+	count := len(keys)
+
+	result := make([]interface{}, 0)
+	for i := 0; i < count; i++ {
+		v, err := mm.rc.PipeRecv(conn)
+		if err != nil {
+			mm.log.Error(err)
+			continue
+		}
+		result = append(result, v)
+	}
+	mm.rc.CloseConn(conn)
+
+	for _, v := range result {
+		memMode := NewMemMode()
+		err := jsoniter.Unmarshal(v.([]byte), memMode)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		mm.SyncMemMode(memMode)
+	}
+
+}
+
+func (mm *MemMgr) SyncMemMode(memMode *MemMode) {
+	if memMode == nil {
+		return
+	}
+
+	var err error
+	switch memMode.State {
+	case MEM_STATE_NEW:
+		fields, values := mm.GetInsertFieldAndValue(memMode)
+		err = mm.dbMgr.Insert(mm.tableName, fields, values)
+	case MEM_STATE_UPDATE:
+		fields, where := mm.GetUpdateFieldAndValue(memMode)
+		err = mm.dbMgr.Update(mm.tableName, fields, where)
+	case MEM_STATE_DEL:
+		where := fmt.Sprintf("%s = %s", mm.pk, memMode.Data[mm.pk].(string))
+		err = mm.dbMgr.Delete(mm.tableName, where)
+	}
+
+	if err == nil {
+		if memMode.State != MEM_STATE_DEL {
+			memMode.State = MEM_STATE_ORI
+			mm.updateData(memMode) //fix
+		} else {
+			mm.DelDataByPK(memMode.Data[mm.pk].(string))
+		}
+	}
+
+}
+
+func (mm *MemMgr) GetInsertFieldAndValue(memMode *MemMode) (fields, values string) {
+	if memMode == nil {
+		return
+	}
+
+	dataLen := len(memMode.Data)
+	index := 0
+	var fieldStr strings.Builder
+	var valueStr strings.Builder
+
+	for k, v := range memMode.Data {
+		//fields += k
+		fieldStr.WriteString(k)
+
+		switch v.(type) {
+		case string:
+			//values += fmt.Sprintf("'%s'", v.(string))
+			valueStr.WriteString("'")
+			valueStr.WriteString(v.(string))
+			valueStr.WriteString("'")
+		case float64:
+			//values += strconv.Itoa(int(v.(float64)))
+			valueStr.WriteString(strconv.Itoa(int(v.(float64))))
+		case map[string]interface{}:
+			d, err := jsoniter.Marshal(v)
+			if err != nil {
+				//values += "'{}'"
+				valueStr.WriteString("'{}'")
+			} else {
+				//values += fmt.Sprintf("'%s'", string(d))
+				valueStr.WriteString("'")
+				valueStr.WriteString(string(d))
+				valueStr.WriteString("'")
+			}
+		default:
+			//values += "'{}'"
+			valueStr.WriteString("'{}'")
+		}
+
+		if index+1 < dataLen {
+			//fields = fmt.Sprintf("%s, ", fields)
+			//values = fmt.Sprintf("%s, ", values)
+			fieldStr.WriteString(", ")
+			valueStr.WriteString(",")
+		}
+		index++
+	}
+
+	fields = fieldStr.String()
+	values = valueStr.String()
+	return
+}
+
+func (mm *MemMgr) GetUpdateFieldAndValue(memMode *MemMode) (fields, where string) {
+	if memMode == nil {
+		return
+	}
+
+	dataLen := len(memMode.Data)
+	index := 0
+	var fieldStr strings.Builder
+
+	for k, v := range memMode.Data {
+		switch v.(type) {
+		case string:
+			fieldStr.WriteString(k)
+			fieldStr.WriteString("=")
+			fieldStr.WriteString("'")
+			fieldStr.WriteString(v.(string))
+			fieldStr.WriteString("'")
+		case float64:
+			fieldStr.WriteString(k)
+			fieldStr.WriteString("=")
+			fieldStr.WriteString(strconv.Itoa(int(v.(float64))))
+		case int:
+			fieldStr.WriteString(k)
+			fieldStr.WriteString("=")
+			fieldStr.WriteString(strconv.Itoa(v.(int)))
+		case map[string]interface{}:
+			d, err := jsoniter.Marshal(v)
+			if err != nil {
+				fieldStr.WriteString(k)
+				fieldStr.WriteString("=")
+				fieldStr.WriteString("'{}'")
+			} else {
+				fieldStr.WriteString(k)
+				fieldStr.WriteString("=")
+				fieldStr.WriteString("'")
+				fieldStr.WriteString(string(d))
+				fieldStr.WriteString("'")
+			}
+		default:
+			fieldStr.WriteString(k)
+			fieldStr.WriteString("=")
+			fieldStr.WriteString("'{}'")
+		}
+
+		if index+1 < dataLen {
+			fieldStr.WriteString(", ")
+		}
+		index++
+	}
+
+	fields = fieldStr.String()
+	where = mm.GetPKCond(memMode)
+	return
+}
+
+func (mm *MemMgr) GetPKCond(memMode *MemMode) string {
+	if memMode == nil {
+		return ""
+	}
+
+	var whereStr strings.Builder
+	pkLen := len(mm.pks) - 1
+
+	for idx, key := range mm.pks {
+		d, ok := memMode.Data[key]
+		if !ok {
+			continue
+		}
+
+		switch d.(type) {
+		case string:
+			whereStr.WriteString(key)
+			whereStr.WriteString("=")
+			whereStr.WriteString("'")
+			whereStr.WriteString(d.(string))
+			whereStr.WriteString("'")
+		case float64:
+			whereStr.WriteString(key)
+			whereStr.WriteString("=")
+			whereStr.WriteString(fmt.Sprintf("%v", d.(float64)))
+		case int:
+			whereStr.WriteString(key)
+			whereStr.WriteString("=")
+			whereStr.WriteString(strconv.Itoa(d.(int)))
+		}
+
+		if idx < pkLen {
+			whereStr.WriteString(" and ")
+		}
+	}
+
+	return whereStr.String()
+}
