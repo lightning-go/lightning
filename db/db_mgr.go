@@ -6,6 +6,7 @@
 package db
 
 import (
+	_ "github.com/jinzhu/gorm/dialects/mysql"
 	"github.com/jinzhu/gorm"
 	"fmt"
 	"github.com/lightning-go/lightning/logger"
@@ -14,6 +15,12 @@ import (
 )
 
 const dbLogPath = "./logs/db.log"
+
+const (
+	DB_type_mysql    = "mysql"
+	DB_type_postgres = "postgres"
+	DB_type_sqlite3  = "sqlite3"
+)
 
 type IDBMgr interface {
 	Close()
@@ -52,11 +59,11 @@ func NewDBMgr(dbType, dbName, user, pwd, host string) *DBMgr {
 
 	sqlConn := ""
 	switch dbType {
-	case "mysql":
+	case DB_type_mysql:
 		sqlConn = dbMgr.getMySQLConn()
-	case "postgres":
+	case DB_type_postgres:
 		sqlConn = dbMgr.getPostgreSQLConn()
-	case "sqlite3":
+	case DB_type_sqlite3:
 		sqlConn = dbMgr.getSqlite3Conn()
 	}
 	if len(sqlConn) == 0 {
@@ -77,7 +84,8 @@ func NewDBMgr(dbType, dbName, user, pwd, host string) *DBMgr {
 }
 
 func (dbMgr *DBMgr) getMySQLConn() string {
-	return fmt.Sprintf("%s:%s@tcp(%s)/%s?charset=utf8&parseTime=True&loc=local",
+	//return fmt.Sprintf("%s:%s@tcp(%s)/%s?charset=utf8&parseTime=True&loc=local",
+	return fmt.Sprintf("%s:%s@tcp(%s)/%s?charset=utf8&parseTime=True",
 		dbMgr.user, dbMgr.pwd, dbMgr.host, dbMgr.dbName)
 }
 

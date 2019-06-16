@@ -283,6 +283,37 @@ func (mm *MemMgr) existIK(ik string) (int, bool) {
 	return -1, false
 }
 
+func (mm *MemMgr) getSpecialPKValue(keys ...interface{}) string {
+	n := len(keys)
+	if n == 0 {
+		return ""
+	}
+
+	n--
+	var keyStr strings.Builder
+
+	for idx, k := range keys {
+		val := ""
+		switch k.(type) {
+		case string:
+			val = k.(string)
+		case float64:
+			val = fmt.Sprintf("%v", k.(float64))
+		case int:
+			val = strconv.Itoa(k.(int))
+		default:
+			continue
+		}
+
+		keyStr.WriteString(val)
+		if idx < n {
+			keyStr.WriteString(":")
+		}
+	}
+
+	return keyStr.String()
+}
+
 func (mm *MemMgr) getPKValue(memMode *MemMode) string {
 	if memMode == nil {
 		return ""
@@ -294,7 +325,20 @@ func (mm *MemMgr) getPKValue(memMode *MemMode) string {
 		if !ok {
 			continue
 		}
-		s.WriteString(d.(string))
+
+		val := ""
+		switch d.(type) {
+		case string:
+			val = d.(string)
+		case float64:
+			val = fmt.Sprintf("%v", d.(float64))
+		case int:
+			val = strconv.Itoa(d.(int))
+		default:
+			continue
+		}
+
+		s.WriteString(val)
 		if idx < n {
 			s.WriteString(":")
 		}
@@ -319,10 +363,10 @@ func (mm *MemMgr) UpdateIKField(key string, srcField, desField interface{}) {
 
 	v := mm.HGetIK(key, srvVal)
 	if v == nil {
-		mm.log.Error("HGET ik field failed", logger.Fields{
-			"key":   key,
-			"field": srvVal,
-		})
+		//mm.log.Error("HGET ik field failed", logger.Fields{
+		//	"key":   key,
+		//	"field": srvVal,
+		//})
 		return
 	}
 
@@ -400,10 +444,10 @@ func (mm *MemMgr) query(key string, isAll bool) *MemMode {
 func (mm *MemMgr) queryIK(ik, key string, isAll bool) *MemMode {
 	v := mm.HGetIK(ik, key)
 	if v == nil {
-		mm.log.Trace("mem query failed", logger.Fields{
-			"ikey": ik,
-			"key":  key,
-		})
+		//mm.log.Trace("mem query failed", logger.Fields{
+		//	"ikey": ik,
+		//	"key":  key,
+		//})
 		return nil
 	}
 	k, ok := v.([]byte)
@@ -415,12 +459,26 @@ func (mm *MemMgr) queryIK(ik, key string, isAll bool) *MemMode {
 	return mm.query(string(k), isAll)
 }
 
+func (mm *MemMgr) QueryByPKs(keys ...interface{}) *MemMode {
+	key := mm.getSpecialPKValue(keys...)
+	return mm.query(key, false)
+}
+
 func (mm *MemMgr) QueryByPK(key string) *MemMode {
 	return mm.query(key, false)
 }
 
 func (mm *MemMgr) QueryByIK(ik, key string) *MemMode {
 	return mm.queryIK(ik, key, false)
+}
+
+func (mm *MemMgr) QueryCheckDBByPKs(keys ...interface{}) *MemMode {
+	key := mm.getSpecialPKValue(keys...)
+	memMode := mm.QueryByPK(key)
+	if memMode != nil {
+		return memMode
+	}
+	return mm.QueryRowByPKs(mm.pk, keys...)
 }
 
 func (mm *MemMgr) QueryCheckDBByPK(key string) *MemMode {
@@ -437,6 +495,57 @@ func (mm *MemMgr) QueryCheckDBByIK(ik, key string) *MemMode {
 		return memMode
 	}
 	return mm.QueryRow(ik, key)
+}
+
+func (mm *MemMgr) QueryRowByPKs(field string, values ...interface{}) (memMode *MemMode) {
+	pkLen := len(mm.pks)
+	valLen := len(values)
+	if pkLen != valLen {
+		return nil
+	}
+
+	n := pkLen - 1
+	var valStr strings.Builder
+	for idx, pk := range mm.pks {
+		if idx >= valLen {
+			return nil
+		}
+		valStr.WriteString(pk)
+		valStr.WriteString("=")
+
+		val := values[idx]
+		switch val.(type) {
+		case string:
+			valStr.WriteString("'")
+			valStr.WriteString(val.(string))
+			valStr.WriteString("'")
+		case float64:
+			v := fmt.Sprintf("%v", val.(float64))
+			valStr.WriteString(v)
+		case int:
+			valStr.WriteString(strconv.Itoa(val.(int)))
+		default:
+			continue
+		}
+
+		if idx < n {
+			valStr.WriteString(" and ")
+		}
+	}
+	where := valStr.String()
+
+	mm.dbMgr.QueryCond(mm.tableName, where, func(rows *sql.Rows) {
+		imem := mm.LoadRows(rows, true)
+		if imem == nil {
+			return
+		}
+		mem, ok := imem.(*MemMode)
+		if !ok {
+			return
+		}
+		memMode = mem
+	})
+	return
 }
 
 func (mm *MemMgr) QueryRow(field, value string) (memMode *MemMode) {
@@ -571,13 +680,32 @@ func (mm *MemMgr) Update(memMode *MemMode) {
 	mm.updateData(memMode)
 }
 
-func (mm *MemMgr) UpdateByPk(key, field string, v interface{}) {
+func (mm *MemMgr) UpdateCheckDBByPks(field string, v interface{}, keys ...interface{}) *MemMode {
+	memMode := mm.UpdateByPks(field, v, keys...)
+	if memMode != nil {
+		return memMode
+	}
+	memMode = mm.QueryRowByPKs(mm.pk, keys...)
+	if memMode != nil {
+		key := mm.getSpecialPKValue(keys...)
+		memMode = mm.UpdateByPk(key, field, v)
+		return memMode
+	}
+	return nil
+}
+
+func (mm *MemMgr) UpdateByPks(field string, v interface{}, keys ...interface{}) *MemMode {
+	key := mm.getSpecialPKValue(keys...)
+	return mm.UpdateByPk(key, field, v)
+}
+
+func (mm *MemMgr) UpdateByPk(key, field string, v interface{}) *MemMode {
 	memMode := mm.QueryByPK(key)
 	if memMode == nil {
-		mm.log.Error("key Error\n", logger.Fields{
-			"key": key,
-		})
-		return
+		//mm.log.Error("key Error\n", logger.Fields{
+		//	"key": key,
+		//})
+		return nil
 	}
 
 	value, ok := memMode.Data[field]
@@ -585,13 +713,15 @@ func (mm *MemMgr) UpdateByPk(key, field string, v interface{}) {
 		mm.log.Error("field Error\n", logger.Fields{
 			"field": field,
 		})
-		return
+		return nil
 	}
 
 	memMode.Data[field] = v
 	memMode.State = MEM_STATE_UPDATE
 	mm.updateData(memMode)
 	mm.UpdateIKField(field, value, v)
+
+	return memMode
 }
 
 func (mm *MemMgr) UpdateByIk(ik, key string, field string, v interface{}) {
@@ -645,18 +775,43 @@ func (mm *MemMgr) AddData(memMode *MemMode, isPKIncrs ...bool) {
 	mm.AddAllIK(memMode)
 }
 
-func (mm *MemMgr) DelDataByPK(key string) {
+func (mm *MemMgr) DelDataCheckDBByPKs(keys ...interface{}) *MemMode {
+	m := mm.DelDataByPKs(keys...)
+	if m == nil {
+		return nil
+	}
+	m.State = MEM_STATE_DEL
+	mm.SyncMemMode(m)
+	return m
+}
+
+func (mm *MemMgr) DelDataByPKs(keys ...interface{}) *MemMode {
+	key := mm.getSpecialPKValue(keys...)
+	return mm.DelDataByPK(key)
+}
+
+func (mm *MemMgr) DelDataCheckDBByPK(key string) *MemMode {
+	m := mm.DelDataByPK(key)
+	if m == nil {
+		return nil
+	}
+	m.State = MEM_STATE_DEL
+	mm.SyncMemMode(m)
+	return m
+}
+
+func (mm *MemMgr) DelDataByPK(key string) *MemMode {
 	memMode := mm.query(key, true)
 	if memMode == nil {
-		mm.log.Error("key Error\n", logger.Fields{
-			"key": key,
-		})
-		return
+		//mm.log.Error("key Error\n", logger.Fields{
+		//	"key": key,
+		//})
+		return nil
 	}
 
 	conn := mm.rc.GetConn()
 	if conn == nil {
-		return
+		return nil
 	}
 
 	for _, k := range mm.iks {
@@ -672,6 +827,8 @@ func (mm *MemMgr) DelDataByPK(key string) {
 
 	mm.rc.PipeEnd(conn)
 	mm.rc.CloseConn(conn)
+
+	return memMode
 }
 
 func (mm *MemMgr) DelDataByIK(ik, key string) {
@@ -803,7 +960,8 @@ func (mm *MemMgr) SyncMemMode(memMode *MemMode) {
 		fields, where := mm.GetUpdateFieldAndValue(memMode)
 		err = mm.dbMgr.Update(mm.tableName, fields, where)
 	case MEM_STATE_DEL:
-		where := fmt.Sprintf("%s = %s", mm.pk, memMode.Data[mm.pk].(string))
+		//where := fmt.Sprintf("%s = %s", mm.pk, memMode.Data[mm.pk].(string))
+		where := mm.GetDeleteCond(memMode)
 		err = mm.dbMgr.Delete(mm.tableName, where)
 	}
 
@@ -812,8 +970,11 @@ func (mm *MemMgr) SyncMemMode(memMode *MemMode) {
 			memMode.State = MEM_STATE_ORI
 			mm.updateData(memMode) //fix
 		} else {
-			mm.DelDataByPK(memMode.Data[mm.pk].(string))
+			key := mm.getPKValue(memMode)
+			mm.DelDataByPK(key)
 		}
+	} else {
+		mm.log.Error(err)
 	}
 
 }
@@ -829,37 +990,32 @@ func (mm *MemMgr) GetInsertFieldAndValue(memMode *MemMode) (fields, values strin
 	var valueStr strings.Builder
 
 	for k, v := range memMode.Data {
-		//fields += k
 		fieldStr.WriteString(k)
 
 		switch v.(type) {
 		case string:
-			//values += fmt.Sprintf("'%s'", v.(string))
 			valueStr.WriteString("'")
 			valueStr.WriteString(v.(string))
 			valueStr.WriteString("'")
+		case int:
+			valueStr.WriteString(strconv.Itoa(v.(int)))
 		case float64:
-			//values += strconv.Itoa(int(v.(float64)))
-			valueStr.WriteString(strconv.Itoa(int(v.(float64))))
+			val := fmt.Sprintf("%v", v.(float64))
+			valueStr.WriteString(val)
 		case map[string]interface{}:
 			d, err := jsoniter.Marshal(v)
 			if err != nil {
-				//values += "'{}'"
 				valueStr.WriteString("'{}'")
 			} else {
-				//values += fmt.Sprintf("'%s'", string(d))
 				valueStr.WriteString("'")
 				valueStr.WriteString(string(d))
 				valueStr.WriteString("'")
 			}
 		default:
-			//values += "'{}'"
 			valueStr.WriteString("'{}'")
 		}
 
 		if index+1 < dataLen {
-			//fields = fmt.Sprintf("%s, ", fields)
-			//values = fmt.Sprintf("%s, ", values)
 			fieldStr.WriteString(", ")
 			valueStr.WriteString(",")
 		}
@@ -891,7 +1047,8 @@ func (mm *MemMgr) GetUpdateFieldAndValue(memMode *MemMode) (fields, where string
 		case float64:
 			fieldStr.WriteString(k)
 			fieldStr.WriteString("=")
-			fieldStr.WriteString(strconv.Itoa(int(v.(float64))))
+			val := fmt.Sprintf("%v", v.(float64))
+			fieldStr.WriteString(val)
 		case int:
 			fieldStr.WriteString(k)
 			fieldStr.WriteString("=")
@@ -963,4 +1120,12 @@ func (mm *MemMgr) GetPKCond(memMode *MemMode) string {
 	}
 
 	return whereStr.String()
+}
+
+func (mm *MemMgr) GetDeleteCond(memMode *MemMode) (where string) {
+	if memMode == nil {
+		return
+	}
+	where = mm.GetPKCond(memMode)
+	return
 }

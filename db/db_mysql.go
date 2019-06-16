@@ -5,7 +5,10 @@
 
 package db
 
-import "database/sql"
+import (
+	"database/sql"
+	"fmt"
+)
 
 type MysqlMgr struct {
 	*DBMgr
@@ -23,8 +26,8 @@ func NewMysqlMgr(dbName, user, pwd, host string) *MysqlMgr {
 }
 
 func (mm *MysqlMgr) QueryPrimaryKey(pk, tableName string) uint64 {
-	s := "SELECT ? FROM ? ORDER BY ? DESC LIMIT 1;"
-	row := mm.dbConn.Raw(s, pk, tableName, pk).Row()
+	s := fmt.Sprintf("SELECT %s FROM %s DESC LIMIT 1;", pk, tableName)
+	row := mm.dbConn.Raw(s).Row()
 	var id uint64
 	err := row.Scan(&id)
 	if err != nil {
@@ -38,8 +41,8 @@ func (mm *MysqlMgr) QueryOneCond(tableName, where string, f func(*sql.Row)) {
 	if f == nil {
 		return
 	}
-	s := "SELECT * FROM ? WHERE ?;"
-	row := mm.dbConn.Raw(s, tableName, where).Row()
+	s := fmt.Sprintf("SELECT * FROM %s WHERE %s;", tableName, where)
+	row := mm.dbConn.Raw(s).Row()
 	f(row)
 }
 
@@ -47,8 +50,8 @@ func (mm *MysqlMgr) QueryCond(tableName, where string, f func(*sql.Rows)) {
 	if f == nil {
 		return
 	}
-	s := "SELECT * FROM ? WHERE ?;"
-	rows, err := mm.dbConn.Raw(s, tableName, where).Rows()
+	s := fmt.Sprintf("SELECT * FROM %s WHERE %s;", tableName, where)
+	rows, err := mm.dbConn.Raw(s).Rows()
 	if err != nil {
 		mm.log.Error(err)
 		return
@@ -61,8 +64,8 @@ func (mm *MysqlMgr) QueryKeyCond(tableName, key, where string, f func(*sql.Rows)
 	if f == nil {
 		return
 	}
-	s := "SELECT ? FROM ? WHERE ?;"
-	rows, err := mm.dbConn.Raw(s, key, tableName, where).Rows()
+	s := fmt.Sprintf("SELECT %s FROM %s WHERE %s;", key, tableName, where)
+	rows, err := mm.dbConn.Raw(s).Rows()
 	if err != nil {
 		mm.log.Error(err)
 		return
@@ -75,8 +78,8 @@ func (mm *MysqlMgr) Query(tableName string, f func(*sql.Rows)) {
 	if f == nil {
 		return
 	}
-	s := "SELECT * FROM ?;"
-	rows, err := mm.dbConn.Raw(s, tableName).Rows()
+	s := fmt.Sprintf("SELECT * FROM %s;", tableName)
+	rows, err := mm.dbConn.Raw(s).Rows()
 	if err != nil {
 		mm.log.Error(err)
 		return
@@ -86,16 +89,16 @@ func (mm *MysqlMgr) Query(tableName string, f func(*sql.Rows)) {
 }
 
 func (mm *MysqlMgr) Insert(tableName, fields, value string) error {
-	s := "INSERT INTO ? (?) VALUES (?);"
-	return mm.dbConn.Exec(s, tableName, fields, value).Error
+	s := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s);", tableName, fields, value)
+	return mm.dbConn.Exec(s).Error
 }
 
 func (mm *MysqlMgr) Update(tableName, fields, value string) error {
-	s := "UPDATE ? SET ? WHERE ?;"
-	return mm.dbConn.Exec(s, tableName, fields, value).Error
+	s := fmt.Sprintf("UPDATE %s SET %s WHERE %s;", tableName, fields, value)
+	return mm.dbConn.Exec(s).Error
 }
 
 func (mm *MysqlMgr) Delete(tableName, where string) error {
-	s := "DELETE FROM ? WHERE ?;"
-	return mm.dbConn.Exec(s, tableName, where).Error
+	s := fmt.Sprintf("DELETE FROM %s WHERE %s;", tableName, where)
+	return mm.dbConn.Exec(s).Error
 }

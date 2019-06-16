@@ -26,6 +26,7 @@ func main() {
 	flag.Parse()
 
 	addr := fmt.Sprintf("%v:%v", *host, *port)
+
 	client := network.NewWSClient("wsclient", addr, *path)
 	if client == nil {
 		panic("alloc new client failed")
@@ -39,7 +40,7 @@ func main() {
 		data := utils.NowTimeFormat()
 		client.SendData([]byte(data))
 	})
-	
+
 	client.SetMsgCallback(func(conn defs.IConnection, packet defs.IPacket) {
 		logger.Trace("", logger.Fields{"onMsg": string(packet.GetData())})
 
