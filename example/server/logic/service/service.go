@@ -13,7 +13,7 @@ import (
 
 type Service struct{}
 
-func (s *Service) Test(conn defs.ISession, req *global.MsgTestReq, ack *global.MsgTestAck) int {
+func (s *Service) Test(session defs.ISession, req *global.MsgTestReq, ack *global.MsgTestAck) int {
 	logger.Tracef("%v", req.N)
 	ack.Str = "hi..........."
 

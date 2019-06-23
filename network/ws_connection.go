@@ -157,7 +157,6 @@ func (wsc *WSConnection) Close() bool {
 	}
 
 	//
-	wsc.conn.WriteMessage(websocket.CloseMessage, []byte{})
 	err := wsc.conn.Close()
 	if err != nil {
 		logger.Warn(err)

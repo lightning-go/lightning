@@ -85,6 +85,7 @@ func (ls *LogicServer) onMsg(conn defs.IConnection, packet defs.IPacket) {
 	if status == global.RESULT_DISCONN {
 		network.DelSession(sessionId)
 		ls.delSession(sId, sessionId)
+		logger.Tracef("disconn: %v", sessionId)
 		return
 	}
 
