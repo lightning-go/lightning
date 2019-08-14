@@ -13,10 +13,11 @@ import (
 )
 
 type Connector struct {
-	addr         string
-	close        chan bool
-	working      bool
-	connCallback defs.ClientConnCallback
+	addr           string
+	close          chan bool
+	working        bool
+	connCallback   defs.ClientConnCallback
+	cancelCallback func()
 }
 
 func NewConnector(addr string) *Connector {
@@ -26,8 +27,22 @@ func NewConnector(addr string) *Connector {
 	}
 }
 
+func (c *Connector) IsWorking() bool {
+	return c.working
+}
+
+func (c *Connector) SetCancelCallback(cb func()) {
+	c.cancelCallback = cb
+}
+
 func (c *Connector) SetConnCallback(cb defs.ClientConnCallback) {
 	c.connCallback = cb
+}
+
+func (c *Connector) CancelHandle() {
+	if c.cancelCallback != nil {
+		c.cancelCallback()
+	}
 }
 
 func (c *Connector) connectionHandle(conn net.Conn) {
@@ -40,17 +55,21 @@ func (c *Connector) Close(v bool) {
 	c.close <- v
 }
 
-func (c *Connector) Start() {
+func (c *Connector) Start(timeout time.Duration) {
 	if c.working {
 		return
 	}
-	c.connect(c.addr)
+	c.connect(c.addr, timeout)
 }
 
-func (c *Connector) connect(addr string) {
+func (c *Connector) connect(addr string, timeout time.Duration) {
 	c.working = true
 	var tmpDelay time.Duration
+
 	maxDelay := 3 * time.Second
+	if timeout > maxDelay {
+		maxDelay = timeout
+	}
 
 	for {
 		conn, err := net.Dial("tcp", addr)
@@ -60,9 +79,16 @@ func (c *Connector) connect(addr string) {
 			} else {
 				tmpDelay += time.Second
 			}
+
+			if timeout > 0 && tmpDelay > time.Duration(timeout) {
+				c.CancelHandle()
+				break
+			}
+
 			if tmpDelay > maxDelay {
 				tmpDelay = maxDelay
 			}
+
 			logger.Warnf("connecting to %v error, retrying in %v second", addr, tmpDelay.Seconds())
 			time.Sleep(tmpDelay)
 			continue

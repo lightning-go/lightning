@@ -7,7 +7,6 @@ package network
 
 import (
 	"sync"
-	"github.com/lightning-go/lightning/defs"
 )
 
 var defaultSessionMgr = NewSessionMgr()
@@ -16,11 +15,13 @@ func GetSessionMgr() *SessionMgr {
 	return defaultSessionMgr
 }
 
-func AddSession(s defs.ISession) {
+//func AddSession(s defs.ISession) {
+func AddSession(s *Session) {
 	defaultSessionMgr.Add(s)
 }
 
-func GetSession(sessionId string) defs.ISession {
+//func GetSession(sessionId string) defs.ISession {
+func GetSession(sessionId string) *Session {
 	return defaultSessionMgr.Get(sessionId)
 }
 
@@ -28,18 +29,20 @@ func DelSession(sessionId string) {
 	defaultSessionMgr.Del(sessionId)
 }
 
-func RangeSession(f func(sId string, s defs.ISession)) {
+//func RangeSession(f func(sId string, s defs.ISession)) {
+func RangeSession(f func(sId string, s *Session)) {
 	defaultSessionMgr.Range(f)
 }
 
 type SessionMgr struct {
 	mux      sync.RWMutex
-	sessions map[string]defs.ISession
+	//sessions map[string]defs.ISession
+	sessions map[string]*Session
 }
 
 func NewSessionMgr() *SessionMgr {
 	return &SessionMgr{
-		sessions: make(map[string]defs.ISession),
+		sessions: make(map[string]*Session),
 	}
 }
 
@@ -50,7 +53,8 @@ func (sm *SessionMgr) Count() int {
 	return count
 }
 
-func (sm *SessionMgr) Add(s defs.ISession) {
+//func (sm *SessionMgr) Add(s defs.ISession) {
+func (sm *SessionMgr) Add(s *Session) {
 	if s == nil {
 		return
 	}
@@ -68,7 +72,8 @@ func (sm *SessionMgr) Del(sessionId string) {
 	sm.mux.Unlock()
 }
 
-func (sm *SessionMgr) Get(sessionId string) defs.ISession {
+//func (sm *SessionMgr) Get(sessionId string) defs.ISession {
+func (sm *SessionMgr) Get(sessionId string) *Session {
 	sm.mux.RLock()
 	session, ok := sm.sessions[sessionId]
 	if !ok {
@@ -79,11 +84,11 @@ func (sm *SessionMgr) Get(sessionId string) defs.ISession {
 	return session
 }
 
-func (sm *SessionMgr) Range(f func(sId string, s defs.ISession)) {
-	sm.mux.RLock()
-	tmpSessions := sm.sessions
-	sm.mux.RUnlock()
-	for sessionId, session := range tmpSessions {
+//func (sm *SessionMgr) Range(f func(sId string, s defs.ISession)) {
+func (sm *SessionMgr) Range(f func(sId string, s *Session)) {
+	sm.mux.Lock()
+	defer sm.mux.Unlock()
+	for sessionId, session := range sm.sessions {
 		f(sessionId, session)
 	}
 }

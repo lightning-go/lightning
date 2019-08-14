@@ -12,6 +12,7 @@ import (
 	"github.com/lightning-go/lightning/conf"
 	"io"
 	"errors"
+	"runtime/debug"
 )
 
 var (
@@ -57,8 +58,12 @@ func (ioModule *IOModule) Close() {
 }
 
 func (ioModule *IOModule) OnConnectionLost() {
-	close(ioModule.writeQueue)
-	close(ioModule.readClose)
+	if ioModule.writeQueue != nil {
+		close(ioModule.writeQueue)
+	}
+	if ioModule.readClose != nil {
+		close(ioModule.readClose)
+	}
 }
 
 func (ioModule *IOModule) Codec(codec defs.ICodec) bool {
@@ -102,6 +107,14 @@ func (ioModule *IOModule) Write(packet defs.IPacket) {
 
 func (ioModule *IOModule) enableWrite() {
 	go func() {
+		defer func() {
+			if err := recover(); err != nil {
+				logger.Error(err)
+				trackBack := string(debug.Stack())
+				logger.Error(trackBack)
+			}
+		}()
+
 		for packet := range ioModule.writeQueue {
 			if packet == nil {
 				continue
@@ -116,11 +129,20 @@ func (ioModule *IOModule) enableWrite() {
 				ioModule.conn.WriteComplete()
 			}
 		}
+
 	}()
 }
 
 func (ioModule *IOModule) enableRead() {
 	go func() {
+		defer func() {
+			if err := recover(); err != nil {
+				logger.Error(err)
+				trackBack := string(debug.Stack())
+				logger.Error(trackBack)
+			}
+		}()
+
 	QUIT:
 		for {
 			select {
@@ -129,7 +151,7 @@ func (ioModule *IOModule) enableRead() {
 			default:
 				err := ioModule.readHandle()
 				if err != nil {
-					if err != io.EOF &&	err != ErrConnClosed {
+					if err != io.EOF && err != ErrConnClosed {
 						logger.Error(err)
 					}
 					break QUIT

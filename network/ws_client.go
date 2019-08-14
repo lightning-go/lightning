@@ -46,6 +46,10 @@ func NewWSClient(name, addr string, path ...string) *WSClient {
 	return client
 }
 
+func (wsclient *WSClient) SetMsgType(msgType int) {
+	wsclient.msgType = msgType
+}
+
 func (wsclient *WSClient) SetCodec(codec defs.ICodec) {
 	wsclient.codec = codec
 }
@@ -94,6 +98,9 @@ func (wsclient *WSClient) connectionHandle(conn *websocket.Conn) {
 
 func (wsclient *WSClient) Close() bool {
 	wsclient.retry = false
+	if wsclient.conn == nil {
+		return true
+	}
 	return wsclient.conn.Close()
 }
 

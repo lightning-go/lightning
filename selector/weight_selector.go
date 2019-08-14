@@ -10,7 +10,7 @@ import (
 )
 
 type SessionData struct {
-	Id     int              `json:"id"`
+	//Id     int              `json:"id"`
 	Host   string           `json:"host"`
 	Name   string           `json:"name"`
 	Type   int              `json:"type"`
@@ -29,7 +29,7 @@ func NewWeightSelector() *WeightSelector {
 	}
 }
 
-func (selector *WeightSelector) Add(data *SessionData) (new bool) {
+func (selector *WeightSelector) IsNew(data *SessionData) bool {
 	if data == nil {
 		return false
 	}
@@ -39,7 +39,43 @@ func (selector *WeightSelector) Add(data *SessionData) (new bool) {
 		if sd == nil {
 			continue
 		}
-		if sd.Id == data.Id {
+		//if sd.Id == data.Id {
+		if sd.Name == data.Name {
+			//sd.Host = data.Host
+			//sd.Name = data.Name
+			//sd.Type = data.Type
+			//sd.Weight = data.Weight
+			selector.mux.Unlock()
+			return false
+		}
+	}
+	selector.mux.Unlock()
+
+	return true
+}
+
+func (selector *WeightSelector) Add(data *SessionData) {
+	if data == nil {
+		return
+	}
+	selector.mux.Lock()
+	selector.sessions = append(selector.sessions, data)
+	selector.mux.Unlock()
+	return
+}
+
+func (selector *WeightSelector) AddCheck(data *SessionData) (new bool) {
+	if data == nil {
+		return false
+	}
+
+	selector.mux.Lock()
+	for _, sd := range selector.sessions {
+		if sd == nil {
+			continue
+		}
+		//if sd.Id == data.Id {
+		if sd.Name == data.Name {
 			sd.Host = data.Host
 			sd.Name = data.Name
 			sd.Type = data.Type
@@ -54,13 +90,14 @@ func (selector *WeightSelector) Add(data *SessionData) (new bool) {
 	return true
 }
 
-func (selector *WeightSelector) Del(key int) {
+//func (selector *WeightSelector) Del(key int) {
+func (selector *WeightSelector) Del(key string) {
 	selector.mux.Lock()
 
 	count := len(selector.sessions)
 	if count == 1 {
 		session := selector.sessions[0]
-		if session != nil && session.Id == key {
+		if session != nil && session.Name == key {
 			selector.sessions = selector.sessions[:0]
 			selector.mux.Unlock()
 			return
@@ -72,7 +109,8 @@ func (selector *WeightSelector) Del(key int) {
 		if session == nil {
 			continue
 		}
-		if session.Id == key {
+		//if session.Id == key {
+		if session.Name == key {
 			delIdx = idx
 			break
 		}
@@ -96,14 +134,45 @@ func (selector *WeightSelector) Del(key int) {
 	selector.mux.Unlock()
 }
 
-func (selector *WeightSelector) Update(key int, weight int) {
+//func (selector *WeightSelector) Update(key int, weight int) {
+func (selector *WeightSelector) Update(key string, weight int) {
 	selector.mux.Lock()
 	for _, sd := range selector.sessions {
 		if sd == nil {
 			continue
 		}
-		if sd.Id == key {
+		if sd.Name == key {
 			sd.Weight = weight
+			selector.mux.Unlock()
+			return
+		}
+	}
+	selector.mux.Unlock()
+}
+
+func (selector *WeightSelector) AddWeight(key string, weight int) {
+	selector.mux.Lock()
+	for _, sd := range selector.sessions {
+		if sd == nil {
+			continue
+		}
+		if sd.Name == key {
+			sd.Weight += weight
+			selector.mux.Unlock()
+			return
+		}
+	}
+	selector.mux.Unlock()
+}
+
+func (selector *WeightSelector) SubWeight(key string, weight int) {
+	selector.mux.Lock()
+	for _, sd := range selector.sessions {
+		if sd == nil {
+			continue
+		}
+		if sd.Name == key {
+			sd.Weight -= weight
 			selector.mux.Unlock()
 			return
 		}
@@ -148,3 +217,41 @@ func (selector *WeightSelector) SelectWeightLeast() *SessionData {
 	session := sessionList[minLoadIdx]
 	return session
 }
+
+func (selector *WeightSelector) SelectRoundWeightLeast() *SessionData {
+	selector.mux.Lock()
+	defer selector.mux.Unlock()
+
+	sessionList := selector.sessions
+	sessionCount := len(sessionList)
+	if sessionCount == 0 {
+		return nil
+	} else if sessionCount == 1 {
+		return sessionList[0]
+	}
+
+	start := (selector.lastIdx + 1) % sessionCount
+	minLoadIdx := start
+
+	minLoad := sessionList[start].Weight
+
+	for i := 0; i < sessionCount; i++ {
+		s := sessionList[i]
+		if s == nil {
+			continue
+		}
+
+		if s.Weight < minLoad {
+			minLoad = s.Weight
+			minLoadIdx = i
+			if minLoad == 0 {
+				break
+			}
+		}
+	}
+
+	selector.lastIdx = minLoadIdx
+	session := sessionList[minLoadIdx]
+	return session
+}
+

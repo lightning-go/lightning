@@ -38,8 +38,22 @@ func NewSession(conn defs.IConnection, sessionId string, async ...bool) *Session
 }
 
 func (s *Session) Close() bool {
-	close(s.packetData)
-	return true
+	if s.packetData != nil {
+		close(s.packetData)
+	}
+	return s.conn.Close()
+}
+
+func (s *Session) SetContext(key, value interface{}) {
+	s.conn.SetContext(key, value)
+}
+
+func (s *Session) GetContext(key interface{}) interface{} {
+	return s.conn.GetContext(key)
+}
+
+func (s *Session) GetConn() defs.IConnection {
+	return s.conn
 }
 
 func (s *Session) GetSessionId() string {

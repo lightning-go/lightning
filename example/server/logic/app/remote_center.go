@@ -41,7 +41,7 @@ func (ls *LogicServer) onRemoteNewConn(conn defs.IConnection) {
 	conn.WriteData(data)
 
 	sessionData := make([]*global.SessionData, 0)
-	network.RangeSession(func(sId string, s defs.ISession) {
+	network.RangeSession(func(sId string, s *network.Session) {
 		session := &global.SessionData{
 			SessionId: sId,
 		}

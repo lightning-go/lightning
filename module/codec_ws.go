@@ -10,6 +10,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/lightning-go/lightning/defs"
 	"github.com/lightning-go/lightning/conf"
+	"github.com/lightning-go/lightning/logger"
 )
 
 type WSCodec struct {
@@ -40,11 +41,13 @@ func (wsCodec *WSCodec) Init(conn defs.IConnection) bool {
 func (wsCodec *WSCodec) Write(packet defs.IPacket) error {
 	err := wsCodec.conn.SetWriteDeadline(time.Now().Add(conf.GetGlobalVal().WriteWait))
 	if err != nil {
+		logger.Error(err)
 		return err
 	}
 
 	err = wsCodec.conn.WriteMessage(wsCodec.msgType, packet.GetData())
 	if err != nil {
+		//logger.Warn(err)
 		err = wsCodec.conn.WriteMessage(websocket.CloseMessage, []byte{})
 	}
 	return nil

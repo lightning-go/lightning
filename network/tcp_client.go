@@ -10,6 +10,7 @@ import (
 	"net"
 	"github.com/lightning-go/lightning/logger"
 	"sync"
+	"time"
 )
 
 type TcpClient struct {
@@ -22,6 +23,7 @@ type TcpClient struct {
 	msgCallback  defs.MsgCallback
 	retry        bool
 	connected    sync.WaitGroup
+	timeout      time.Duration
 }
 
 func NewTcpClient(name, addr string) *TcpClient {
@@ -35,7 +37,16 @@ func NewTcpClient(name, addr string) *TcpClient {
 		retry:     true,
 	}
 	client.connector.SetConnCallback(client.connectionHandle)
+	client.connector.SetCancelCallback(client.Cancel)
 	return client
+}
+
+func (tcpClient *TcpClient) IsWorking() bool {
+	return tcpClient.connector.IsWorking()
+}
+
+func (tcpClient *TcpClient) SetTimeout(val time.Duration) {
+	tcpClient.timeout = val
 }
 
 func (tcpClient *TcpClient) SetCodec(codec defs.ICodec) {
@@ -91,6 +102,10 @@ func (tcpClient *TcpClient) Close() bool {
 	return tcpClient.conn.Close()
 }
 
+func (tcpClient *TcpClient) Cancel() {
+	tcpClient.connected.Done()
+}
+
 func (tcpClient *TcpClient) CloseConnection(conn defs.IConnection) {
 	if conn != nil {
 		logger.Tracef("close connection: %v", conn.GetId())
@@ -104,7 +119,7 @@ func (tcpClient *TcpClient) CloseConnection(conn defs.IConnection) {
 
 func (tcpClient *TcpClient) Connect() defs.IConnection {
 	tcpClient.connected.Add(1)
-	go tcpClient.connector.Start()
+	go tcpClient.connector.Start(tcpClient.timeout)
 	tcpClient.connected.Wait()
 	return tcpClient.conn
 }

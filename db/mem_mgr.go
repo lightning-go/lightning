@@ -535,15 +535,11 @@ func (mm *MemMgr) QueryRowByPKs(field string, values ...interface{}) (memMode *M
 	where := valStr.String()
 
 	mm.dbMgr.QueryCond(mm.tableName, where, func(rows *sql.Rows) {
-		imem := mm.LoadRows(rows, true)
-		if imem == nil {
+		memList := mm.LoadRows(rows, true)
+		if memList == nil || len(memList) == 0 {
 			return
 		}
-		mem, ok := imem.(*MemMode)
-		if !ok {
-			return
-		}
-		memMode = mem
+		memMode = memList[0]
 	})
 	return
 }
@@ -551,26 +547,30 @@ func (mm *MemMgr) QueryRowByPKs(field string, values ...interface{}) (memMode *M
 func (mm *MemMgr) QueryRow(field, value string) (memMode *MemMode) {
 	where := fmt.Sprintf("%s = '%s'", field, value)
 	mm.dbMgr.QueryCond(mm.tableName, where, func(rows *sql.Rows) {
-		imem := mm.LoadRows(rows, true)
-		if imem == nil {
+		memList := mm.LoadRows(rows, true)
+		if memList == nil  || len(memList) == 0 {
 			return
 		}
-		mem, ok := imem.(*MemMode)
-		if !ok {
-			return
-		}
-		memMode = mem
+		memMode = memList[0]
 	})
 	return
 }
 
-func (mm *MemMgr) LoadDB() {
+func (mm *MemMgr) LoadDB() (d []*MemMode) {
 	mm.dbMgr.Query(mm.tableName, func(rows *sql.Rows) {
-		mm.LoadRows(rows)
+		d = mm.LoadRows(rows)
 	})
+	return
 }
 
-func (mm *MemMgr) LoadRows(rows *sql.Rows, justOne ...bool) interface{} {
+func (mm *MemMgr) LoadDBCond(where string) (d []*MemMode) {
+	mm.dbMgr.QueryCond(mm.tableName, where, func(rows *sql.Rows) {
+		d = mm.LoadRows(rows)
+	})
+	return
+}
+
+func (mm *MemMgr) LoadRows(rows *sql.Rows, justOne ...bool) []*MemMode {
 	if rows == nil {
 		return nil
 	}
@@ -650,7 +650,7 @@ func (mm *MemMgr) LoadRows(rows *sql.Rows, justOne ...bool) interface{} {
 		if one {
 			mm.rc.PipeEnd(conn)
 			mm.rc.CloseConn(conn)
-			return memMode
+			return []*MemMode{memMode}
 		}
 
 		memModes = append(memModes, memMode)
@@ -675,8 +675,14 @@ func (mm *MemMgr) updateData(memMode *MemMode) {
 	mm.HSet(pk, v)
 }
 
-func (mm *MemMgr) Update(memMode *MemMode) {
-	memMode.State = MEM_STATE_UPDATE
+func (mm *MemMgr) Update(memMode *MemMode, updateState ...bool) {
+	us := true
+	if len(updateState) > 0 && updateState[0] {
+		us = updateState[0]
+	}
+	if us {
+		memMode.State = MEM_STATE_UPDATE
+	}
 	mm.updateData(memMode)
 }
 
@@ -766,7 +772,7 @@ func (mm *MemMgr) AddData(memMode *MemMode, isPKIncrs ...bool) {
 
 	v, err := jsoniter.Marshal(memMode)
 	if err != nil {
-		fmt.Println(err)
+		mm.log.Error(err)
 		return
 	}
 

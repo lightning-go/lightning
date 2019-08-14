@@ -223,11 +223,16 @@ func main() {
 				fmt.Println(err)
 				break
 			}
+
+			for _, v := range values {
+				d, ok := v.([]byte)
+				if !ok {
+					continue
+				}
+				fmt.Printf("%v ", string(d))
+			}
 		}
 
-		for _, v := range values {
-			fmt.Println(v)
-		}
 	})
 
 	pool := db.InitRedisPool("localhost:6379", 3, 0)

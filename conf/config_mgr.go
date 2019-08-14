@@ -25,12 +25,14 @@ type ServerConfig struct {
 	Name          string                `json:"name"`
 	Host          string                `json:"host"`
 	Port          int                   `json:"port"`
+	WebPort       int                   `json:"webPort"`
 	MaxConn       int                   `json:"maxConn"`
 	MaxPacketSize int                   `json:"maxPacketSize"`
 	Log           map[string]*LogConfig `json:"log"`
 	Remotes       []string              `json:"remotes"`
 	HostList      []string              `json:"hostList"`
 	Timeout       int                   `json:"timeout"`
+	WatchServerId string                `json:"watchServerId"`
 }
 
 func (sc *ServerConfig) GetDefaultLogConf() *LogConfig {
