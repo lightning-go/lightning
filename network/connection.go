@@ -17,18 +17,18 @@ import (
 )
 
 type Connection struct {
-	connId        string
-	conn          net.Conn
-	codec         defs.ICodec
-	ioModule      defs.IIOModule
-	connCallback  defs.ConnCallback
-	msgCallback   defs.MsgCallback
-	closeCallback defs.CloseCallback
-	writeComplete defs.WriteCompleteCallback
-	authCallback  defs.AuthorizedCallback
-	isClosed      int32
-	isAuthorized  bool
-	ctx           context.Context
+	connId                string
+	conn                  net.Conn
+	codec                 defs.ICodec
+	ioModule              defs.IIOModule
+	connCallback          defs.ConnCallback
+	msgCallback           defs.MsgCallback
+	closeCallback         defs.CloseCallback
+	writeComplete         defs.WriteCompleteCallback
+	authCallback          defs.AuthorizedCallback
+	isClosed              int32
+	isAuthorized          bool
+	ctx                   context.Context
 }
 
 func NewConnection(conn net.Conn) *Connection {
@@ -45,6 +45,10 @@ func NewConnection(conn net.Conn) *Connection {
 		ctx:          utils.NewContextMap(context.Background()),
 	}
 	return c
+}
+
+func (c *Connection) UpdateCodec(codec defs.ICodec) {
+	c.ioModule.UpdateCodec(codec)
 }
 
 func (c *Connection) SetCodec(codec defs.ICodec) {
@@ -69,6 +73,10 @@ func (c *Connection) SetMsgCallback(cb defs.MsgCallback) {
 
 func (c *Connection) SetAuthorizedCallback(cb defs.AuthorizedCallback) {
 	c.authCallback = cb
+}
+
+func (c *Connection) SetWriteCompleteCallback(cb defs.WriteCompleteCallback) {
+	c.writeComplete = cb
 }
 
 func (c *Connection) SetContext(key, value interface{}) {
@@ -185,6 +193,9 @@ func (c *Connection) WritePacket(packet defs.IPacket) {
 }
 
 func (c *Connection) ReadPacket(packet defs.IPacket) {
+	if packet == nil {
+		return
+	}
 	c.onMsg(packet)
 }
 

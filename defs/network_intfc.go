@@ -31,6 +31,7 @@ type IServer interface {
 	SetMsgCallback(MsgCallback)
 	SetExitCallback(ExitCallback)
 	SetAuthorizedCallback(AuthorizedCallback)
+	SetWriteCompleteCallback(WriteCompleteCallback)
 }
 
 type IWSServer interface {
@@ -49,6 +50,7 @@ type IClient interface {
 	SetMsgCallback(MsgCallback)
 	SendData([]byte)
 	SendPacket(IPacket)
+	GetConn() IConnection
 }
 
 type IConnection interface {
@@ -65,6 +67,7 @@ type IConnection interface {
 	SetContext(interface{}, interface{})
 	GetContext(interface{}) interface{}
 	DelContext(interface{})
+	UpdateCodec(ICodec)
 }
 
 type ITcpConnection interface {

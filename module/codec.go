@@ -125,8 +125,10 @@ func (decoder *Decoder) DecodeDataFull(buf []byte) (n int, err error) {
 		return 0, ErrReadBuffNil
 	}
 	n, err = io.ReadFull(decoder.reader, buf)
-	if n == 0 {
-		return 0, ErrConnClosed
+	if err != nil {
+		if n == 0 {
+			return 0, ErrConnClosed
+		}
 	}
 	return n, err
 }

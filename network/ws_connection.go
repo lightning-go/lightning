@@ -49,6 +49,14 @@ func NewWSConnection(conn *websocket.Conn) *WSConnection {
 	return wsc
 }
 
+func (wsc *WSConnection) UpdateCodec(codec defs.ICodec) {
+	wsc.ioModule.UpdateCodec(codec)
+}
+
+func (wsc *WSConnection) SetAuthorized(val bool) {
+	wsc.isAuthorized = val
+}
+
 func (wsc *WSConnection) SetMsgType(msgType int) {
 	wsc.msgType = msgType
 }
@@ -79,6 +87,10 @@ func (wsc *WSConnection) SetMsgCallback(cb defs.MsgCallback) {
 
 func (wsc *WSConnection) SetAuthorizedCallback(cb defs.AuthorizedCallback) {
 	wsc.authCallback = cb
+}
+
+func (wsc *WSConnection) SetWriteCompleteCallback(cb defs.WriteCompleteCallback) {
+	wsc.writeComplete = cb
 }
 
 func (wsc *WSConnection) SetContext(key, value interface{}) {

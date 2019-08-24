@@ -41,6 +41,18 @@ func NewIOModule(conn defs.IConnection) *IOModule {
 	}
 }
 
+func (ioModule *IOModule) UpdateCodec(codec defs.ICodec) {
+	ioModule.codec = ioModule.newCodec(codec)
+	if ioModule.codec == nil {
+		logger.Error("new codec failed")
+		return
+	}
+	if !ioModule.codec.Init(ioModule.conn) {
+		logger.Error("codec init failed")
+		return
+	}
+}
+
 func (ioModule *IOModule) newCodec(codec defs.ICodec) defs.ICodec {
 	mType := reflect.TypeOf(codec)
 	obj := reflect.New(mType.Elem())
@@ -166,6 +178,8 @@ func (ioModule *IOModule) writeHandle(packet defs.IPacket) error {
 	defer func() {
 		if err := recover(); err != nil {
 			logger.Error(err)
+			trackBack := string(debug.Stack())
+			logger.Errorf("%v", trackBack)
 		}
 	}()
 	return ioModule.codec.Write(packet)
@@ -175,6 +189,8 @@ func (ioModule *IOModule) readHandle() error {
 	defer func() {
 		if err := recover(); err != nil {
 			logger.Error(err)
+			trackBack := string(debug.Stack())
+			logger.Errorf("%v", trackBack)
 		}
 	}()
 

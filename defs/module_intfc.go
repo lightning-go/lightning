@@ -27,4 +27,5 @@ type IIOModule interface {
 	Close()
 	OnConnectionLost()
 	Write(IPacket)
+	UpdateCodec(ICodec)
 }

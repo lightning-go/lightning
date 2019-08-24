@@ -14,6 +14,7 @@ import (
 	"github.com/lightning-go/lightning/module"
 	"sync"
 	"github.com/lightning-go/lightning/example/server/global"
+	"runtime/debug"
 )
 
 type LogicServer struct {
@@ -74,6 +75,8 @@ func (ls *LogicServer) onMsg(conn defs.IConnection, packet defs.IPacket) {
 	defer func() {
 		if err := recover(); err != nil {
 			logger.Errorf("panic error : %v", err)
+			trackBack := string(debug.Stack())
+			logger.Errorf("%v", trackBack)
 		}
 	}()
 

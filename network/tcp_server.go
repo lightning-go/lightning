@@ -15,16 +15,17 @@ import (
 const ReAcceptDelay = 5
 
 type TcpServer struct {
-	listener     net.Listener
-	name         string
-	maxConn      int
-	connMgr      *ConnectionMgr
-	codec        defs.ICodec
-	ioModule     defs.IIOModule
-	connCallback defs.ConnCallback
-	msgCallback  defs.MsgCallback
-	exitCallback defs.ExitCallback
-	authCallback defs.AuthorizedCallback
+	listener              net.Listener
+	name                  string
+	maxConn               int
+	connMgr               *ConnectionMgr
+	codec                 defs.ICodec
+	ioModule              defs.IIOModule
+	connCallback          defs.ConnCallback
+	msgCallback           defs.MsgCallback
+	exitCallback          defs.ExitCallback
+	authCallback          defs.AuthorizedCallback
+	writeCompleteCallback defs.WriteCompleteCallback
 }
 
 func NewTcpServer(addr, name string, maxConn int) *TcpServer {
@@ -66,6 +67,10 @@ func (tcpServer *TcpServer) SetExitCallback(cb defs.ExitCallback) {
 
 func (tcpServer *TcpServer) SetAuthorizedCallback(cb defs.AuthorizedCallback) {
 	tcpServer.authCallback = cb
+}
+
+func (tcpServer *TcpServer) SetWriteCompleteCallback(cb defs.WriteCompleteCallback) {
+	tcpServer.writeCompleteCallback = cb
 }
 
 func (tcpServer *TcpServer) Name() string {
@@ -156,6 +161,7 @@ func (tcpServer *TcpServer) newConnection(conn net.Conn) *Connection {
 	newConn.SetConnCallback(tcpServer.connCallback)
 	newConn.SetMsgCallback(tcpServer.msgCallback)
 	newConn.SetAuthorizedCallback(tcpServer.authCallback)
+	newConn.SetWriteCompleteCallback(tcpServer.writeCompleteCallback)
 	return newConn
 }
 

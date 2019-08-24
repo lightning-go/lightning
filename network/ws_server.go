@@ -16,22 +16,23 @@ import (
 )
 
 type WSServer struct {
-	listener     net.Listener
-	addr         string
-	path         string
-	name         string
-	maxConn      int
-	msgType      int
-	enablePong   bool
-	connMgr      *ConnectionMgr
-	upgrader     *websocket.Upgrader
-	httpSrv      *http.Server
-	codec        defs.ICodec
-	ioModule     defs.IIOModule
-	connCallback defs.ConnCallback
-	msgCallback  defs.MsgCallback
-	exitCallback defs.ExitCallback
-	authCallback defs.AuthorizedCallback
+	listener      net.Listener
+	addr          string
+	path          string
+	name          string
+	maxConn       int
+	msgType       int
+	enablePong    bool
+	connMgr       *ConnectionMgr
+	upgrader      *websocket.Upgrader
+	httpSrv       *http.Server
+	codec         defs.ICodec
+	ioModule      defs.IIOModule
+	connCallback  defs.ConnCallback
+	msgCallback   defs.MsgCallback
+	exitCallback  defs.ExitCallback
+	authCallback  defs.AuthorizedCallback
+	writeComplete defs.WriteCompleteCallback
 }
 
 func NewWSServer(name, addr string, maxConn int, path ...string) *WSServer {
@@ -81,6 +82,10 @@ func (ws *WSServer) SetExitCallback(cb defs.ExitCallback) {
 
 func (ws *WSServer) SetAuthorizedCallback(cb defs.AuthorizedCallback) {
 	ws.authCallback = cb
+}
+
+func (ws *WSServer) SetWriteCompleteCallback(cb defs.WriteCompleteCallback) {
+	ws.writeComplete = cb
 }
 
 func (ws *WSServer) Name() string {
@@ -180,6 +185,7 @@ func (ws *WSServer) newConnection(conn *websocket.Conn) *WSConnection {
 	wsConn.SetConnCallback(ws.connCallback)
 	wsConn.SetMsgCallback(ws.msgCallback)
 	wsConn.SetAuthorizedCallback(ws.authCallback)
+	wsConn.SetWriteCompleteCallback(ws.writeComplete)
 	return wsConn
 }
 

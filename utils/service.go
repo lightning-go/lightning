@@ -16,6 +16,7 @@ import (
 	"github.com/lightning-go/lightning/logger"
 
 	"github.com/json-iterator/go"
+	"runtime/debug"
 )
 
 var theServiceFactory *ServiceFactory
@@ -78,6 +79,8 @@ func (sf *ServiceFactory) OnServiceHandle(session defs.ISession, packet defs.IPa
 	defer func() {
 		if err := recover(); err != nil {
 			logger.Error(err)
+			trackBack := string(debug.Stack())
+			logger.Errorf("%v", trackBack)
 		}
 	}()
 

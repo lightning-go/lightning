@@ -24,6 +24,7 @@ type TcpClient struct {
 	retry        bool
 	connected    sync.WaitGroup
 	timeout      time.Duration
+	oneStep      bool
 }
 
 func NewTcpClient(name, addr string) *TcpClient {
@@ -35,10 +36,19 @@ func NewTcpClient(name, addr string) *TcpClient {
 		connector: connector,
 		name:      name,
 		retry:     true,
+		oneStep:   false,
 	}
 	client.connector.SetConnCallback(client.connectionHandle)
 	client.connector.SetCancelCallback(client.Cancel)
 	return client
+}
+
+func (tcpClient *TcpClient) SetOneStep(val bool) {
+	tcpClient.oneStep = val
+}
+
+func (tcpClient *TcpClient) GetConn() defs.IConnection {
+	return tcpClient.conn
 }
 
 func (tcpClient *TcpClient) IsWorking() bool {
@@ -90,11 +100,20 @@ func (tcpClient *TcpClient) connectionHandle(conn net.Conn) {
 	tcpClient.conn.SetConnCallback(tcpClient.connCallback)
 	tcpClient.conn.SetMsgCallback(tcpClient.msgCallback)
 
-	if !tcpClient.conn.Start() {
-		return
+	if !tcpClient.oneStep {
+		if !tcpClient.conn.Start() {
+			return
+		}
 	}
 
 	tcpClient.connected.Done()
+}
+
+func (tcpClient *TcpClient) Start() {
+	if tcpClient.conn == nil || tcpClient.conn.IsClosed() {
+		return
+	}
+	tcpClient.conn.Start()
 }
 
 func (tcpClient *TcpClient) Close() bool {
