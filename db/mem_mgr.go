@@ -215,9 +215,9 @@ func (mm *MemMgr) HGetIK(ik, key string) interface{} {
 	return v
 }
 
-func (mm *MemMgr) Set(key string, v interface{}) {
+func (mm *MemMgr) Set(key string, v interface{}, expire ...int64) {
 	keyName := mm.produceFieldKey(mm.pk, key)
-	_, err := mm.rc.Set(keyName, v)
+	_, err := mm.rc.Set(keyName, v, expire...)
 	if err != nil {
 		mm.log.Error(err)
 	}

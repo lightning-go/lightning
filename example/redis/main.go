@@ -191,6 +191,14 @@ func multiKeyTest(rc *db.RedisClient) {
 
 }
 
+func redisTest(rc *db.RedisClient) {
+	if rc == nil {
+		return
+	}
+	rc.Set("a", 3, 5)
+	//rc.Expire("a", 6)
+}
+
 func main() {
 	dbMgr := db.NewMysqlMgr("test", "root", "123456", "localhost:3306")
 	if dbMgr == nil {
@@ -231,6 +239,7 @@ func main() {
 				}
 				fmt.Printf("%v ", string(d))
 			}
+			fmt.Println()
 		}
 
 	})
@@ -245,9 +254,14 @@ func main() {
 	defer rc.Close()
 
 	//
-	singleKeyTest(rc)
+	redisTest(rc)
 
 	//
-	multiKeyTest(rc)
+	//singleKeyTest(rc)
+
+	//
+	//multiKeyTest(rc)
+
+
 
 }
