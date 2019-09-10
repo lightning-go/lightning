@@ -87,7 +87,7 @@ func (tcpServer *TcpServer) start() {
 }
 
 func (tcpServer *TcpServer) serveTcp() {
-	logger.Infof("%v start, listen %v", tcpServer.name, tcpServer.listener.Addr().String())
+	logger.Infof("%v listen %v", tcpServer.name, tcpServer.listener.Addr().String())
 	var tmpDelay time.Duration
 	maxDelay := 1 * time.Second
 
