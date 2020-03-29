@@ -58,6 +58,7 @@ func (idg *IdGenerator) Get() (id uint64) {
 	id = idg.id
 	if id == maxId {
 		id = minId
+		idg.id = minId
 		idg.cycleCount++
 	} else {
 		idg.id++
@@ -87,12 +88,13 @@ func (idg *IdGenerator) GetAvailableId() (id uint64) {
 	id = idg.id
 	if id == maxId {
 		id = minId
+		idg.id = minId
 		idg.cycleCount++
 	} else {
 		idg.id++
 	}
-
 	idg.mux.Unlock()
+
 	return
 }
 

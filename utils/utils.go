@@ -20,6 +20,7 @@ import (
 
 var (
 	NullData      = []byte("{}")
+	NullDataEx    = []byte("")
 	TypeOfContext = reflect.TypeOf((*context.Context)(nil)).Elem()
 	TypeOfError   = reflect.TypeOf((*error)(nil)).Elem()
 	TypeOfInt     = reflect.TypeOf((*int)(nil)).Elem()

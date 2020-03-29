@@ -167,29 +167,53 @@ func (c *Connection) WriteComplete() {
 	}
 }
 
-func (c *Connection) WriteData(data []byte) {
-	if data == nil || len(data) == 0 {
-		return
-	}
+
+func (c *Connection) write(packet defs.IPacket, await bool) (defs.IPacket, error) {
 	if c.IsClosed() {
-		return
+		return nil, nil
 	}
 	if c.ioModule == nil {
-		return
+		return nil, nil
+	}
+	if await {
+		return c.ioModule.WriteAwait(packet)
+	}
+	c.ioModule.Write(packet)
+	return nil, nil
+}
+
+func (c *Connection) writeData(id string, data []byte, await bool) (defs.IPacket, error) {
+	if data == nil || len(data) == 0 {
+		return nil, nil
 	}
 	p := &defs.Packet{}
+	p.SetId(id)
 	p.SetData(data)
-	c.ioModule.Write(p)
+	return c.write(p, await)
+}
+
+func (c *Connection) WriteData(data []byte) {
+	c.writeData("", data, false)
+}
+
+func (c *Connection) WriteDataById(id string, data []byte) {
+	c.writeData(id, data, false)
 }
 
 func (c *Connection) WritePacket(packet defs.IPacket) {
-	if c.IsClosed() {
-		return
-	}
-	if c.ioModule == nil {
-		return
-	}
-	c.ioModule.Write(packet)
+	c.write(packet, false)
+}
+
+func (c *Connection) WriteDataAwait(data []byte) (defs.IPacket, error) {
+	return c.writeData("", data, true)
+}
+
+func (c *Connection) WriteDataByIdAwait(id string, data []byte) (defs.IPacket, error) {
+	return c.writeData(id, data, true)
+}
+
+func (c *Connection) WritePacketAwait(packet defs.IPacket) (defs.IPacket, error) {
+	return c.write(packet, true)
 }
 
 func (c *Connection) ReadPacket(packet defs.IPacket) {
@@ -204,7 +228,6 @@ func (c *Connection) onMsg(packet defs.IPacket) {
 		c.isAuthorized = c.authCallback(c, packet)
 		return
 	}
-
 	if c.msgCallback != nil {
 		c.msgCallback(c, packet)
 	}

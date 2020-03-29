@@ -29,29 +29,31 @@ func NewWeightSelector() *WeightSelector {
 	}
 }
 
-func (selector *WeightSelector) IsNew(data *SessionData) bool {
+func (selector *WeightSelector) IsNew(data *SessionData) (new bool, changed bool) {
 	if data == nil {
-		return false
+		return false, false
 	}
 
 	selector.mux.Lock()
+	defer selector.mux.Unlock()
+
 	for _, sd := range selector.sessions {
 		if sd == nil {
 			continue
 		}
-		//if sd.Id == data.Id {
 		if sd.Name == data.Name {
-			//sd.Host = data.Host
-			//sd.Name = data.Name
-			//sd.Type = data.Type
-			//sd.Weight = data.Weight
-			selector.mux.Unlock()
-			return false
+			if sd.Host == data.Host {
+				sd.Type = data.Type
+				sd.Weight = data.Weight
+				return false, false
+			} else {
+				selector.Del(sd.Name)
+				return false, true
+			}
 		}
 	}
-	selector.mux.Unlock()
 
-	return true
+	return true, false
 }
 
 func (selector *WeightSelector) Add(data *SessionData) {
@@ -64,33 +66,34 @@ func (selector *WeightSelector) Add(data *SessionData) {
 	return
 }
 
-func (selector *WeightSelector) AddCheck(data *SessionData) (new bool) {
+func (selector *WeightSelector) AddCheck(data *SessionData) (new bool, changed bool) {
 	if data == nil {
-		return false
+		return false, false
 	}
 
 	selector.mux.Lock()
+	defer selector.mux.Unlock()
+
 	for _, sd := range selector.sessions {
 		if sd == nil {
 			continue
 		}
-		//if sd.Id == data.Id {
 		if sd.Name == data.Name {
-			sd.Host = data.Host
-			sd.Name = data.Name
-			sd.Type = data.Type
-			sd.Weight = data.Weight
-			selector.mux.Unlock()
-			return false
+			if sd.Host == data.Host {
+				sd.Type = data.Type
+				sd.Weight = data.Weight
+				return false, false
+			} else {
+				selector.Del(sd.Name)
+				return false, true
+			}
 		}
 	}
 
 	selector.sessions = append(selector.sessions, data)
-	selector.mux.Unlock()
-	return true
+	return true, false
 }
 
-//func (selector *WeightSelector) Del(key int) {
 func (selector *WeightSelector) Del(key string) {
 	selector.mux.Lock()
 

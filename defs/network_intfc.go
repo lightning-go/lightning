@@ -17,16 +17,18 @@ type ConnCallback func(IConnection)
 type MsgCallback func(IConnection, IPacket)
 type AuthorizedCallback func(IConnection, IPacket) bool
 type ClientConnCallback func(net.Conn)
+type NewIOModuleCallback func(IConnection) IIOModule
 type ParseMethodNameCallback func(string) (string, error)
-type ParseReqDataCallback func([]byte, interface{}) bool
-type ParseAckDataCallback func(interface{}) []byte
+type ParseDataCallback func([]byte, interface{}) bool
+type SerializeDataCallback func(interface{}, ...interface{}) []byte
 
 type IServer interface {
+	Host() string
 	Name() string
 	Serve()
 	Stop()
 	SetCodec(ICodec)
-	SetIOModule(IIOModule)
+	SetNewIOModuleCallback(NewIOModuleCallback)
 	SetConnCallback(ConnCallback)
 	SetMsgCallback(MsgCallback)
 	SetExitCallback(ExitCallback)
@@ -49,7 +51,11 @@ type IClient interface {
 	SetConnCallback(ConnCallback)
 	SetMsgCallback(MsgCallback)
 	SendData([]byte)
+	SendDataById(string, []byte)
 	SendPacket(IPacket)
+	SendDataAwait([]byte) (IPacket, error)
+	SendDataByIdAwait(string, []byte) (IPacket, error)
+	SendPacketAwait(IPacket) (IPacket, error)
 	GetConn() IConnection
 }
 
@@ -61,8 +67,12 @@ type IConnection interface {
 	IsClosed() bool
 	OnConnection()
 	ReadPacket(IPacket)
-	WritePacket(IPacket)
 	WriteData([]byte)
+	WriteDataById(string, []byte)
+	WritePacket(IPacket)
+	WriteDataAwait([]byte) (IPacket, error)
+	WriteDataByIdAwait(string, []byte) (IPacket, error)
+	WritePacketAwait(IPacket) (IPacket, error)
 	WriteComplete()
 	SetContext(interface{}, interface{})
 	GetContext(interface{}) interface{}
@@ -79,10 +89,22 @@ type IWSConnection interface {
 	GetMsgType() int
 }
 
+type ServeObj interface {
+	OnServiceHandle(session ISession, packet IPacket) bool
+}
+
 type ISession interface {
+	GetServeObj() ServeObj
+	GetConnId() string
 	GetSessionId() string
 	Close() bool
+	CloseSession() bool
 	WritePacket(IPacket)
 	WriteData([]byte)
+	WriteDataById(string, []byte)
 	OnService(packet IPacket) bool
+	SetContext(key, value interface{})
+	GetContext(key interface{}) interface{}
+	SetPacket(IPacket)
+	GetPacket() IPacket
 }

@@ -84,6 +84,14 @@ func (hc *HeadCodec) Write(packet defs.IPacket) error {
 		}
 	}
 
+	//sequence
+	seq := packet.GetSequence()
+	err = hc.enc.EncodeUInt64(seq)
+	if err != nil {
+		hc.enc.Clean()
+		return err
+	}
+
 	//status
 	err = hc.enc.EncodeInt32(int32(packet.GetStatus()))
 	if err != nil {
@@ -150,6 +158,13 @@ func (hc *HeadCodec) Read() (defs.IPacket, error) {
 		sId = idData[:n]
 	}
 
+	//sequence
+	seq, err := hc.dec.DecodeUInt64()
+	if err != nil {
+		hc.dec.Clean()
+		return nil, err
+	}
+
 	//status
 	status, err := hc.dec.DecodeInt32()
 	if err != nil {
@@ -169,6 +184,7 @@ func (hc *HeadCodec) Read() (defs.IPacket, error) {
 	p := &defs.Packet{}
 	p.SetId(string(id))
 	p.SetSessionId(string(sId))
+	p.SetSequence(uint64(seq))
 	p.SetStatus(int(status))
 	p.SetData(buff[:n])
 

@@ -182,29 +182,52 @@ func (wsc *WSConnection) WriteComplete() {
 	}
 }
 
-func (wsc *WSConnection) WriteData(data []byte) {
-	if data == nil || len(data) == 0 {
-		return
-	}
+func (wsc *WSConnection) write(packet defs.IPacket, await bool) (defs.IPacket, error) {
 	if wsc.IsClosed() {
-		return
+		return nil, nil
 	}
 	if wsc.ioModule == nil {
-		return
+		return nil, nil
+	}
+	if await {
+		return wsc.ioModule.WriteAwait(packet)
+	}
+	wsc.ioModule.Write(packet)
+	return nil, nil
+}
+
+func (wsc *WSConnection) writeData(id string, data []byte, await bool) (defs.IPacket, error) {
+	if data == nil || len(data) == 0 {
+		return nil, nil
 	}
 	p := &defs.Packet{}
+	p.SetId(id)
 	p.SetData(data)
-	wsc.ioModule.Write(p)
+	return wsc.write(p, await)
+}
+
+func (wsc *WSConnection) WriteData(data []byte) {
+	wsc.writeData("", data, false)
+}
+
+func (wsc *WSConnection) WriteDataById(id string, data []byte) {
+	wsc.writeData(id, data, false)
 }
 
 func (wsc *WSConnection) WritePacket(packet defs.IPacket) {
-	if wsc.IsClosed() {
-		return
-	}
-	if wsc.ioModule == nil {
-		return
-	}
-	wsc.ioModule.Write(packet)
+	wsc.write(packet, false)
+}
+
+func (wsc *WSConnection) WriteDataAwait(data []byte) (defs.IPacket, error) {
+	return wsc.writeData("", data, true)
+}
+
+func (wsc *WSConnection) WriteDataByIdAwait(id string, data []byte) (defs.IPacket, error) {
+	return wsc.writeData(id, data, true)
+}
+
+func (wsc *WSConnection) WritePacketAwait(packet defs.IPacket) (defs.IPacket, error) {
+	return wsc.write(packet, true)
 }
 
 func (wsc *WSConnection) ReadPacket(packet defs.IPacket) {
@@ -216,7 +239,6 @@ func (wsc *WSConnection) onMsg(packet defs.IPacket) {
 		wsc.isAuthorized = wsc.authCallback(wsc, packet)
 		return
 	}
-
 	if wsc.msgCallback != nil {
 		wsc.msgCallback(wsc, packet)
 	}

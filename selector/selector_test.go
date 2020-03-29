@@ -20,12 +20,12 @@ func TestSelector(t *testing.T) {
 	n := 0
 	for i := 0; i < 20; i++ {
 		session := s.SelectWeightLeast()
-		fmt.Println(session.Id)
+		fmt.Println(session.Name)
 
 		if n == 5 {
-			s.Update(session.Id, 10)
+			s.Update(session.Name, 10)
 			session := s.SelectWeightLeast()
-			fmt.Println("update after:", session.Id)
+			fmt.Println("update after:", session.Name)
 		}
 		n++
 	}
@@ -37,7 +37,6 @@ func genSessionData() *WeightSelector {
 
 	for i := 1; i <= 10; i++ {
 		sd := &SessionData{
-			Id:     i,
 			Host:   "127.0.0.1:10000",
 			Name:   fmt.Sprintf("conn%v", i),
 			Type:   1,

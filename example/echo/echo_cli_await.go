@@ -20,7 +20,6 @@ import (
 var (
 	host      = flag.String("h", "127.0.0.1", "connect host")
 	port      = flag.Int("p", 21000, "connect port")
-	codecType = flag.Int("c", 0, "codec type: 1 stream, 2 head")
 )
 
 
@@ -41,10 +40,6 @@ func createClient(addr string, codec defs.ICodec, waitInput chan bool) *network.
 		}
 	})
 
-	client.SetMsgCallback(func(conn defs.IConnection, packet defs.IPacket) {
-		fmt.Printf("onMsg: %s (%d)\n>> ", packet.GetData(), packet.GetSequence())
-	})
-
 	client.SetCodec(codec)
 	client.Connect()
 	return client
@@ -54,14 +49,7 @@ func createClient(addr string, codec defs.ICodec, waitInput chan bool) *network.
 func main() {
 	flag.Parse()
 
-	var codec defs.ICodec = nil
-	switch *codecType {
-	case 1:
-		codec = module.NewStreamCodec()
-	case 2:
-		codec = module.NewHeadCodec()
-	}
-
+	codec := module.NewHeadCodec()
 	waitInput := make(chan bool, 1)
 	addr := fmt.Sprintf("%v:%v", *host, *port)
 
@@ -88,7 +76,12 @@ func main() {
 			break
 		}
 
-		client.SendData(rawLine)
+		ack, err := client.SendDataAwait(rawLine)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+		fmt.Printf("await ack %v, %s\n", ack.GetSequence(), ack.GetData())
 	}
 
 	fmt.Println("--------- exit ---------")

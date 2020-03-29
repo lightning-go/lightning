@@ -14,6 +14,8 @@ type IPacket interface {
 	GetId() string
 	SetStatus(int)
 	GetStatus() int
+	GetSequence() uint64
+	SetSequence(uint64)
 }
 
 type ICodec interface {
@@ -27,5 +29,6 @@ type IIOModule interface {
 	Close()
 	OnConnectionLost()
 	Write(IPacket)
+	WriteAwait(IPacket) (IPacket, error)
 	UpdateCodec(ICodec)
 }

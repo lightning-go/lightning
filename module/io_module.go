@@ -13,6 +13,8 @@ import (
 	"io"
 	"errors"
 	"runtime/debug"
+	"sync"
+	"github.com/lightning-go/lightning/utils"
 )
 
 var (
@@ -22,23 +24,54 @@ var (
 	ErrCodecReadNil  = errors.New("codec read is nil")
 )
 
+type RpcCall struct {
+	request  defs.IPacket
+	response defs.IPacket
+	reply    interface{}
+	Done     chan *RpcCall
+}
+
+func (rpcCall *RpcCall) done() {
+	select {
+	case rpcCall.Done <- rpcCall:
+	default:
+		logger.Warn("RpcClient: discarding call reply due to insufficient done chan capacity")
+	}
+}
+
 type IOModule struct {
 	conn       defs.IConnection
 	codec      defs.ICodec
 	writeQueue chan defs.IPacket
 	readClose  chan bool
+	rpcPool    sync.Pool
+	idGen      *utils.IdGenerator
+	pending    sync.Map
 }
 
 func NewIOModule(conn defs.IConnection) *IOModule {
 	if conn == nil {
 		return nil
 	}
-	return &IOModule{
+	m := &IOModule{
 		conn:       conn,
 		codec:      nil,
 		writeQueue: make(chan defs.IPacket, conf.GetGlobalVal().MaxQueueSize),
 		readClose:  make(chan bool),
+		idGen:      utils.NewIdGenerator(),
 	}
+	m.rpcPool.New = func() interface{} {
+		return &RpcCall{}
+	}
+	return m
+}
+
+func (ioModule *IOModule) newRpcCall() *RpcCall {
+	return ioModule.rpcPool.Get().(*RpcCall)
+}
+
+func (ioModule *IOModule) freeRpcCall(rpcCall *RpcCall) {
+	ioModule.rpcPool.Put(rpcCall)
 }
 
 func (ioModule *IOModule) UpdateCodec(codec defs.ICodec) {
@@ -105,6 +138,78 @@ func (ioModule *IOModule) Codec(codec defs.ICodec) bool {
 	return true
 }
 
+func (ioModule *IOModule) readPending(packet defs.IPacket) bool {
+	if packet == nil {
+		return false
+	}
+	seq := packet.GetSequence()
+	iCall, ok := ioModule.pending.Load(seq)
+	if !ok {
+		return false
+	}
+	ioModule.pending.Delete(seq)
+
+	if iCall == nil {
+		logger.Errorf("seq:%v call interface nil", seq)
+		return false
+	}
+	call, ok := iCall.(*RpcCall)
+	if !ok {
+		logger.Errorf("seq:%v call object nil", seq)
+		return false
+	}
+
+	switch {
+	default:
+		call.response = packet
+		call.done()
+	}
+	return true
+}
+
+func (ioModule *IOModule) pendDone() {
+	ioModule.pending.Range(func(key, value interface{}) bool {
+		call, ok := value.(*RpcCall)
+		if ok && call != nil {
+			call.done()
+		}
+		return true
+	})
+}
+
+func (ioModule *IOModule) WriteAwait(packet defs.IPacket) (response defs.IPacket, err error) {
+	seq := ioModule.idGen.Get()
+	packet.SetSequence(seq)
+
+	call := ioModule.newRpcCall()
+	call.request = packet
+	call.response = nil
+	call.Done = make(chan *RpcCall, 1)
+
+	ioModule.pending.Store(seq, call)
+	err = ioModule.writeHandle(packet)
+	if err != nil {
+		logger.Error(err)
+		iCall, ok := ioModule.pending.Load(seq)
+		if ok {
+			ioModule.pending.Delete(seq)
+		}
+		if iCall != nil {
+			call := iCall.(*RpcCall)
+			if call != nil {
+				call.done()
+			}
+		}
+	}
+
+	call = <-call.Done
+	if call != nil {
+		response = call.response
+	}
+	ioModule.freeRpcCall(call)
+	return
+}
+
 func (ioModule *IOModule) Write(packet defs.IPacket) {
 	if packet == nil {
 		return
@@ -136,7 +241,6 @@ func (ioModule *IOModule) enableWrite() {
 				logger.Error(err)
 				break
 			}
-
 			if len(ioModule.writeQueue) == 0 {
 				ioModule.conn.WriteComplete()
 			}
@@ -161,15 +265,23 @@ func (ioModule *IOModule) enableRead() {
 			case <-ioModule.readClose:
 				break QUIT
 			default:
-				err := ioModule.readHandle()
+				packet, err := ioModule.readHandle()
 				if err != nil {
 					if err != io.EOF && err != ErrConnClosed {
 						logger.Error(err)
 					}
 					break QUIT
 				}
+				if packet == nil {
+					continue
+				}
+				if ioModule.readPending(packet) {
+					continue
+				}
+				ioModule.conn.ReadPacket(packet)
 			}
 		}
+		ioModule.pendDone()
 		ioModule.Close()
 	}()
 }
@@ -185,7 +297,7 @@ func (ioModule *IOModule) writeHandle(packet defs.IPacket) error {
 	return ioModule.codec.Write(packet)
 }
 
-func (ioModule *IOModule) readHandle() error {
+func (ioModule *IOModule) readHandle() (defs.IPacket, error) {
 	defer func() {
 		if err := recover(); err != nil {
 			logger.Error(err)
@@ -193,12 +305,5 @@ func (ioModule *IOModule) readHandle() error {
 			logger.Errorf("%v", trackBack)
 		}
 	}()
-
-	packet, err := ioModule.codec.Read()
-	if err != nil {
-		return err
-	}
-
-	ioModule.conn.ReadPacket(packet)
-	return nil
+	return ioModule.codec.Read()
 }

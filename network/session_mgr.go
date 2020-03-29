@@ -7,7 +7,40 @@ package network
 
 import (
 	"sync"
+	"sync/atomic"
 )
+
+type Map struct {
+	dict    sync.Map
+	counter int64
+}
+
+func (m *Map) Length() int64 {
+	count := atomic.LoadInt64(&m.counter)
+	return count
+}
+
+func (m *Map) Get(key interface{}) (interface{}, bool) {
+	return m.dict.Load(key)
+}
+
+func (m *Map) Add(key, value interface{}) {
+	m.dict.Store(key, value)
+	atomic.AddInt64(&m.counter, 1)
+}
+
+func (m *Map) Del(key interface{}) {
+	m.dict.Delete(key)
+	atomic.AddInt64(&m.counter, -1)
+}
+
+func (m *Map) Range(f func(k, v interface{}) bool) {
+	m.dict.Range(func(key, value interface{}) bool {
+		return f(key, value)
+	})
+}
+
+////////////////////////////////////////////////////////////////
 
 var defaultSessionMgr = NewSessionMgr()
 
@@ -15,80 +48,133 @@ func GetSessionMgr() *SessionMgr {
 	return defaultSessionMgr
 }
 
-//func AddSession(s defs.ISession) {
 func AddSession(s *Session) {
-	defaultSessionMgr.Add(s)
+	defaultSessionMgr.AddSession(s)
 }
 
-//func GetSession(sessionId string) defs.ISession {
 func GetSession(sessionId string) *Session {
-	return defaultSessionMgr.Get(sessionId)
+	return defaultSessionMgr.GetSession(sessionId)
 }
 
 func DelSession(sessionId string) {
-	defaultSessionMgr.Del(sessionId)
+	defaultSessionMgr.DelSession(sessionId)
 }
 
-//func RangeSession(f func(sId string, s defs.ISession)) {
 func RangeSession(f func(sId string, s *Session)) {
-	defaultSessionMgr.Range(f)
+	defaultSessionMgr.RangeSession(f)
 }
+
+////////////////////////////////////////////////////////////////
 
 type SessionMgr struct {
-	mux      sync.RWMutex
-	//sessions map[string]defs.ISession
-	sessions map[string]*Session
+	sessions *Map
+	connDict *Map
 }
 
 func NewSessionMgr() *SessionMgr {
 	return &SessionMgr{
-		sessions: make(map[string]*Session),
+		sessions: &Map{},
+		connDict: &Map{},
 	}
 }
 
-func (sm *SessionMgr) Count() int {
-	sm.mux.RLock()
-	count := len(sm.sessions)
-	sm.mux.RUnlock()
-	return count
+func (sm *SessionMgr) SessionCount() int64 {
+	return sm.sessions.Length()
 }
 
-//func (sm *SessionMgr) Add(s defs.ISession) {
-func (sm *SessionMgr) Add(s *Session) {
+func (sm *SessionMgr) AddSession(s *Session) {
 	if s == nil {
 		return
 	}
-	sm.mux.Lock()
-	sm.sessions[s.GetSessionId()] = s
-	sm.mux.Unlock()
-}
+	sessionId := s.GetSessionId()
+	sm.sessions.Add(sessionId, s)
 
-func (sm *SessionMgr) Del(sessionId string) {
-	sm.mux.Lock()
-	_, ok := sm.sessions[sessionId]
-	if ok {
-		delete(sm.sessions, sessionId)
+	connId := s.GetConnId()
+	if sessionId != connId {
+		d := sm.getConnSession(connId)
+		if d == nil {
+			d := &sync.Map{}
+			d.Store(sessionId, struct{}{})
+			sm.connDict.Add(connId, d)
+		} else {
+			d.Store(sessionId, struct{}{})
+		}
 	}
-	sm.mux.Unlock()
 }
 
-//func (sm *SessionMgr) Get(sessionId string) defs.ISession {
-func (sm *SessionMgr) Get(sessionId string) *Session {
-	sm.mux.RLock()
-	session, ok := sm.sessions[sessionId]
+func (sm *SessionMgr) getConnSession(connId string) *sync.Map {
+	d, ok := sm.connDict.Get(connId)
 	if !ok {
-		sm.mux.RUnlock()
 		return nil
 	}
-	sm.mux.RUnlock()
-	return session
+	d2, ok := d.(*sync.Map)
+	if !ok {
+		return nil
+	}
+	return d2
 }
 
-//func (sm *SessionMgr) Range(f func(sId string, s defs.ISession)) {
-func (sm *SessionMgr) Range(f func(sId string, s *Session)) {
-	sm.mux.Lock()
-	defer sm.mux.Unlock()
-	for sessionId, session := range sm.sessions {
-		f(sessionId, session)
+func (sm *SessionMgr) GetSession(sessionId string) *Session {
+	v, ok := sm.sessions.Get(sessionId)
+	if !ok {
+		return nil
 	}
+	s, ok := v.(*Session)
+	if !ok {
+		return nil
+	}
+	return s
+}
+
+func (sm *SessionMgr) DelSession(sessionId string) {
+	session := sm.GetSession(sessionId)
+	if session == nil {
+		return
+	}
+	session.CloseSession()
+
+	connId := session.GetConnId()
+	sm.sessions.Del(sessionId)
+
+	d := sm.getConnSession(connId)
+	if d != nil {
+		d.Delete(sessionId)
+	}
+}
+
+func (sm *SessionMgr) DelConnSession(connId string) {
+	d := sm.getConnSession(connId)
+	if d == nil {
+		return
+	}
+
+	d.Range(func(key, value interface{}) bool {
+		sessionId, ok := key.(string)
+		if !ok {
+			return true
+		}
+
+		session := sm.GetSession(sessionId)
+		if session != nil {
+			session.CloseSession()
+		}
+
+		sm.sessions.Del(sessionId)
+		return true
+	})
+	sm.connDict.Del(connId)
+}
+
+func (sm *SessionMgr) RangeSession(f func(string, *Session)) {
+	if f == nil {
+		return
+	}
+	sm.sessions.Range(func(k, v interface{}) bool {
+		session, ok := v.(*Session)
+		if !ok {
+			return true
+		}
+		f(session.GetSessionId(), session)
+		return true
+	})
 }

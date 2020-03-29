@@ -17,6 +17,8 @@ import (
 
 	"github.com/json-iterator/go"
 	"runtime/debug"
+	"github.com/golang/protobuf/proto"
+	"errors"
 )
 
 var theServiceFactory *ServiceFactory
@@ -32,32 +34,25 @@ func GetMsgFactory() *ServiceFactory {
 type ServiceFactory struct {
 	msgRCVR                 reflect.Value
 	msgHandle               sync.Map
-	parseMethodNameCallback defs.ParseMethodNameCallback
-	parseReqDataCallback    defs.ParseReqDataCallback
-	parseAckDataCallback    defs.ParseAckDataCallback
-	autoReply               bool
+	ParseMethodNameCallback defs.ParseMethodNameCallback
+	ParseDataCallback       defs.ParseDataCallback
+	serializeDataCallback   defs.SerializeDataCallback
 }
 
 func NewServiceFactory() *ServiceFactory {
-	return &ServiceFactory{
-		autoReply: true,
-	}
-}
-
-func (sf *ServiceFactory) SetAutoReply(val bool) {
-	sf.autoReply = val
+	return &ServiceFactory{}
 }
 
 func (sf *ServiceFactory) SetParseMethodNameCallback(cb defs.ParseMethodNameCallback) {
-	sf.parseMethodNameCallback = cb
+	sf.ParseMethodNameCallback = cb
 }
 
-func (sf *ServiceFactory) SetParseReqDataCallback(cb defs.ParseReqDataCallback) {
-	sf.parseReqDataCallback = cb
+func (sf *ServiceFactory) SetParseDataCallback(cb defs.ParseDataCallback) {
+	sf.ParseDataCallback = cb
 }
 
-func (sf *ServiceFactory) SetParseAckDataCallback(cb defs.ParseAckDataCallback) {
-	sf.parseAckDataCallback = cb
+func (sf *ServiceFactory) SetSerializeDataCallback(cb defs.SerializeDataCallback) {
+	sf.serializeDataCallback = cb
 }
 
 func (sf *ServiceFactory) get(key interface{}) *defs.MethodType {
@@ -70,7 +65,7 @@ func (sf *ServiceFactory) get(key interface{}) *defs.MethodType {
 
 func (sf *ServiceFactory) Register(rcvr interface{}, cb ...defs.ParseMethodNameCallback) {
 	if len(cb) > 0 {
-		sf.parseMethodNameCallback = cb[0]
+		sf.ParseMethodNameCallback = cb[0]
 	}
 	sf.suitableMethods(rcvr, &sf.msgRCVR, &sf.msgHandle)
 }
@@ -88,6 +83,10 @@ func (sf *ServiceFactory) OnServiceHandle(session defs.ISession, packet defs.IPa
 		logger.Trace("session is nil")
 		return false
 	}
+	if packet == nil {
+		logger.Trace("packet is nil")
+		return false
+	}
 
 	key := packet.GetId()
 	typ := sf.get(key)
@@ -103,20 +102,23 @@ func (sf *ServiceFactory) OnServiceHandle(session defs.ISession, packet defs.IPa
 	}
 	req := reflect.New(typ.ArgType.Elem())
 
-	if sf.parseReqDataCallback == nil {
-		if !ParseReqDataByJson(packet.GetData(), req.Interface()) {
+	if sf.ParseDataCallback == nil {
+		if !ParseDataByJson(packet.GetData(), req.Interface()) {
 			logger.Trace("parse request data failed")
 			return false
 		}
 	} else {
-		if !sf.parseReqDataCallback(packet.GetData(), req.Interface()) {
+		if !sf.ParseDataCallback(packet.GetData(), req.Interface()) {
 			logger.Trace("parse request data failed")
 			return false
 		}
 	}
 
+	session.SetPacket(packet)
+	defer session.SetPacket(nil)
 	function := typ.Method.Func
-	if !sf.autoReply {
+
+	if typ.ReplyType == nil {
 		function.Call([]reflect.Value{sf.msgRCVR, reflect.ValueOf(session), req})
 		return true
 	}
@@ -130,16 +132,19 @@ func (sf *ServiceFactory) OnServiceHandle(session defs.ISession, packet defs.IPa
 			errno, ok := iErrno.(int)
 			if ok {
 				var data []byte
-				if sf.parseAckDataCallback == nil {
-					data = ParseAckDataByJson(ack.Interface())
+				d := ack.Interface()
+				d = d
+				if sf.serializeDataCallback == nil {
+					data = SerializeDataByJson(ack.Interface())
 				} else {
-					data = sf.parseAckDataCallback(ack.Interface())
+					data = sf.serializeDataCallback(ack.Interface())
 				}
 				p := &defs.Packet{}
 				p.SetSessionId(packet.GetSessionId())
 				p.SetId(packet.GetId())
 				p.SetStatus(errno)
 				p.SetData(data)
+				p.SetSequence(packet.GetSequence())
 				session.WritePacket(p)
 			}
 		default:
@@ -171,11 +176,11 @@ func (sf *ServiceFactory) suitableMethods(rcvr interface{}, rcvr2 *reflect.Value
 		methodName := method.Name
 
 		var nameVal string
-		if sf.parseMethodNameCallback == nil {
+		if sf.ParseMethodNameCallback == nil {
 			nameVal = methodName
 		} else {
 			var err error
-			nameVal, err = sf.parseMethodNameCallback(methodName)
+			nameVal, err = sf.ParseMethodNameCallback(methodName)
 			if err != nil {
 				continue
 			}
@@ -186,14 +191,14 @@ func (sf *ServiceFactory) suitableMethods(rcvr interface{}, rcvr2 *reflect.Value
 		}
 
 		paramNum := mtype.NumIn()
-		if paramNum != 4 && sf.autoReply {
-			continue
-		} else if paramNum != 3 && !sf.autoReply {
+		if paramNum < 3 {
+			logger.Errorf("function: %v, param num %v, least 2",
+				method.Name, IF(paramNum > 0, paramNum-1, 0))
 			continue
 		}
 
 		argType := mtype.In(2)
-		var replyType reflect.Type
+		var replyType reflect.Type = nil
 
 		if paramNum == 4 {
 			replyType = mtype.In(3)
@@ -224,10 +229,7 @@ func (sf *ServiceFactory) suitableMethods(rcvr interface{}, rcvr2 *reflect.Value
 	return nil
 }
 
-func RegisterService(rcvr interface{}, autoReply ...bool) {
-	if len(autoReply) > 0 {
-		GetMsgFactory().SetAutoReply(autoReply[0])
-	}
+func RegisterService(rcvr interface{}) {
 	GetMsgFactory().Register(rcvr)
 }
 
@@ -248,7 +250,7 @@ func ParseMethodNameBySuffix(methodName string) (name string, err error) {
 	return "", fmt.Errorf("type name: %v is non-existent", typeName)
 }
 
-func ParseReqDataByJson(data []byte, req interface{}) bool {
+func ParseDataByJson(data []byte, req interface{}) bool {
 	if data == nil || len(data) == 0 {
 		return false
 	}
@@ -260,7 +262,7 @@ func ParseReqDataByJson(data []byte, req interface{}) bool {
 	return true
 }
 
-func ParseAckDataByJson(d interface{}) []byte {
+func SerializeDataByJson(d interface{}, param ...interface{}) []byte {
 	if d == nil {
 		return NullData
 	}
@@ -269,5 +271,52 @@ func ParseAckDataByJson(d interface{}) []byte {
 		logger.Error(err)
 		return NullData
 	}
+	return data
+}
+
+func ParseDataByProtobuf(data []byte, req interface{}) bool {
+	if data == nil || len(data) == 0 {
+		return false
+	}
+	pb, ok := req.(proto.Message)
+	if !ok {
+		return false
+	}
+	err := proto.Unmarshal(data, pb)
+	if err != nil {
+		logger.Error(err)
+		return false
+	}
+	return true
+}
+
+func SerializeDataByProtobuf(d interface{}, param ...interface{}) []byte {
+	if d == nil {
+		return NullDataEx
+	}
+	pb, ok := d.(proto.Message)
+	if !ok {
+		logger.Error(errors.New(fmt.Sprintf("%T does not implement proto.Message", d)))
+		return NullDataEx
+	}
+
+	buffOK := false
+	var buf *proto.Buffer = nil
+	if len(param) > 0 {
+		b := param[0]
+		buf, buffOK = b.(*proto.Buffer)
+	}
+	if !buffOK {
+		buf = proto.NewBuffer(make([]byte, 0, 128))
+	}
+
+	err := buf.Marshal(pb)
+	if err != nil {
+		logger.Error(err)
+		return NullDataEx
+	}
+
+	data := buf.Bytes()
+	buf.Reset()
 	return data
 }

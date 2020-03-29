@@ -16,23 +16,23 @@ import (
 )
 
 type WSServer struct {
-	listener      net.Listener
-	addr          string
-	path          string
-	name          string
-	maxConn       int
-	msgType       int
-	enablePong    bool
-	connMgr       *ConnectionMgr
-	upgrader      *websocket.Upgrader
-	httpSrv       *http.Server
-	codec         defs.ICodec
-	ioModule      defs.IIOModule
-	connCallback  defs.ConnCallback
-	msgCallback   defs.MsgCallback
-	exitCallback  defs.ExitCallback
-	authCallback  defs.AuthorizedCallback
-	writeComplete defs.WriteCompleteCallback
+	listener         net.Listener
+	addr             string
+	path             string
+	name             string
+	maxConn          int
+	msgType          int
+	enablePong       bool
+	connMgr          *ConnectionMgr
+	upgrader         *websocket.Upgrader
+	httpSrv          *http.Server
+	codec            defs.ICodec
+	ioModuleCallback defs.NewIOModuleCallback
+	connCallback     defs.ConnCallback
+	msgCallback      defs.MsgCallback
+	exitCallback     defs.ExitCallback
+	authCallback     defs.AuthorizedCallback
+	writeComplete    defs.WriteCompleteCallback
 }
 
 func NewWSServer(name, addr string, maxConn int, path ...string) *WSServer {
@@ -64,8 +64,8 @@ func (ws *WSServer) SetCodec(codec defs.ICodec) {
 	ws.codec = codec
 }
 
-func (ws *WSServer) SetIOModule(ioModule defs.IIOModule) {
-	ws.ioModule = ioModule
+func (ws *WSServer) SetNewIOModuleCallback(newCallback defs.NewIOModuleCallback) {
+	ws.ioModuleCallback = newCallback
 }
 
 func (ws *WSServer) SetConnCallback(cb defs.ConnCallback) {
@@ -86,6 +86,10 @@ func (ws *WSServer) SetAuthorizedCallback(cb defs.AuthorizedCallback) {
 
 func (ws *WSServer) SetWriteCompleteCallback(cb defs.WriteCompleteCallback) {
 	ws.writeComplete = cb
+}
+
+func (ws *WSServer) Host() string {
+	return ws.listener.Addr().String()
 }
 
 func (ws *WSServer) Name() string {
@@ -178,9 +182,11 @@ func (ws *WSServer) newConnection(conn *websocket.Conn) *WSConnection {
 	if wsConn == nil {
 		return nil
 	}
+	if ws.ioModuleCallback != nil {
+		wsConn.SetIOModule(ws.ioModuleCallback(wsConn))
+	}
 	wsConn.SetMsgType(ws.msgType)
 	wsConn.SetCodec(ws.codec)
-	wsConn.SetIOModule(ws.ioModule)
 	wsConn.SetCloseCallback(ws.closeConnection)
 	wsConn.SetConnCallback(ws.connCallback)
 	wsConn.SetMsgCallback(ws.msgCallback)

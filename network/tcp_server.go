@@ -19,8 +19,8 @@ type TcpServer struct {
 	name                  string
 	maxConn               int
 	connMgr               *ConnectionMgr
+	ioModuleCallback      defs.NewIOModuleCallback
 	codec                 defs.ICodec
-	ioModule              defs.IIOModule
 	connCallback          defs.ConnCallback
 	msgCallback           defs.MsgCallback
 	exitCallback          defs.ExitCallback
@@ -49,8 +49,8 @@ func (tcpServer *TcpServer) SetCodec(codec defs.ICodec) {
 	tcpServer.codec = codec
 }
 
-func (tcpServer *TcpServer) SetIOModule(ioModule defs.IIOModule) {
-	tcpServer.ioModule = ioModule
+func (tcpServer *TcpServer) SetNewIOModuleCallback(newCallback defs.NewIOModuleCallback) {
+	tcpServer.ioModuleCallback = newCallback
 }
 
 func (tcpServer *TcpServer) SetConnCallback(cb defs.ConnCallback) {
@@ -71,6 +71,10 @@ func (tcpServer *TcpServer) SetAuthorizedCallback(cb defs.AuthorizedCallback) {
 
 func (tcpServer *TcpServer) SetWriteCompleteCallback(cb defs.WriteCompleteCallback) {
 	tcpServer.writeCompleteCallback = cb
+}
+
+func (tcpServer *TcpServer) Host() string {
+	return tcpServer.listener.Addr().String()
 }
 
 func (tcpServer *TcpServer) Name() string {
@@ -154,9 +158,10 @@ func (tcpServer *TcpServer) newConnection(conn net.Conn) *Connection {
 	if newConn == nil {
 		return nil
 	}
-
+	if tcpServer.ioModuleCallback != nil {
+		newConn.SetIOModule(tcpServer.ioModuleCallback(newConn))
+	}
 	newConn.SetCodec(tcpServer.codec)
-	newConn.SetIOModule(tcpServer.ioModule)
 	newConn.SetCloseCallback(tcpServer.CloseConnection)
 	newConn.SetConnCallback(tcpServer.connCallback)
 	newConn.SetMsgCallback(tcpServer.msgCallback)

@@ -150,3 +150,19 @@ func (tcpClient *TcpClient) SendPacket(packet defs.IPacket) {
 func (tcpClient *TcpClient) SendData(data []byte) {
 	tcpClient.conn.WriteData(data)
 }
+
+func (tcpClient *TcpClient) SendDataById(id string, data []byte) {
+	tcpClient.conn.WriteDataById(id, data)
+}
+
+func (tcpClient *TcpClient) SendPacketAwait(packet defs.IPacket) (defs.IPacket, error) {
+	return tcpClient.conn.WritePacketAwait(packet)
+}
+
+func (tcpClient *TcpClient) SendDataAwait(data []byte) (defs.IPacket, error) {
+	return tcpClient.conn.WriteDataAwait(data)
+}
+
+func (tcpClient *TcpClient) SendDataByIdAwait(id string, data []byte) (defs.IPacket, error) {
+	return tcpClient.conn.WriteDataByIdAwait(id, data)
+}

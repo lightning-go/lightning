@@ -16,6 +16,7 @@ type Packet struct {
 	id        string
 	data      []byte
 	status    int
+	sequence  uint64
 }
 
 func (p *Packet) GetSessionId() string {
@@ -48,6 +49,14 @@ func (p *Packet) GetStatus() int {
 
 func (p *Packet) SetStatus(status int) {
 	p.status = status
+}
+
+func (p *Packet) GetSequence() uint64 {
+	return p.sequence
+}
+
+func (p *Packet) SetSequence(sequence uint64) {
+	p.sequence = sequence
 }
 
 //
