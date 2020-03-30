@@ -12,7 +12,49 @@ import (
 	"sync"
 )
 
-var defaultCfgPath = "./config/srvConf.json"
+var defaultCfgPath = "config/srvConf.json"
+
+var defaultServerCfgMgr *ServerCfgMgr
+var cfgOnce sync.Once
+
+func InitCfg(path string) {
+	cfgOnce.Do(func() {
+		defaultServerCfgMgr = newServerCfgMgr()
+		defaultServerCfgMgr.LoadConf(path)
+	})
+	if defaultServerCfgMgr == nil {
+		panic("init config failed")
+	}
+}
+
+func GetServer(srvName string) *ServerConfig {
+	if defaultServerCfgMgr == nil {
+		return nil
+	}
+	return defaultServerCfgMgr.GetServer(srvName)
+}
+
+func GetDB(srvName string) *DBConfig {
+	if defaultServerCfgMgr == nil {
+		return nil
+	}
+	return defaultServerCfgMgr.GetDB(srvName)
+}
+
+func LoadFile(path string) ([]byte, error) {
+	return ioutil.ReadFile(path)
+}
+
+func GetConfPath(path ...string) string {
+	dir, err := filepath.Abs(filepath.Dir("."))
+	if err != nil {
+		return ""
+	}
+	if len(path) > 0 {
+		return filepath.Join(dir, path[0])
+	}
+	return filepath.Join(dir, defaultCfgPath)
+}
 
 type LogConfig struct {
 	LogLevel     string `json:"logLevel"`
@@ -31,8 +73,9 @@ type ServerConfig struct {
 	Log           map[string]*LogConfig `json:"log"`
 	Remotes       []string              `json:"remotes"`
 	HostList      []string              `json:"hostList"`
-	Timeout       int                   `json:"timeout"`
-	WatchServerId string                `json:"watchServerId"`
+	Timeout       int64                 `json:"timeout"`
+	Group         string                `json:"group"`
+	WatchGroup    string                `json:"watchGroup"`
 }
 
 func (sc *ServerConfig) GetDefaultLogConf() *LogConfig {
@@ -43,72 +86,69 @@ func (sc *ServerConfig) GetDefaultLogConf() *LogConfig {
 	return d
 }
 
+type DBConfig struct {
+	DbType string `json:"dbType"`
+	Name   string `json:"name"`
+	Host   string `json:"host"`
+	Port   int    `json:"port"`
+	User   string `json:"user"`
+	Pwd    string `json:"pwd"`
+}
+
 type ServerCfgMgr struct {
-	conf map[string]*ServerConfig
-}
-
-var defaultServerCfgMgr *ServerCfgMgr
-var cfgOnce sync.Once
-
-func InitCfg(path string) {
-	cfgOnce.Do(func() {
-		defaultServerCfgMgr = newServerCfgMgr()
-	})
-	if defaultServerCfgMgr == nil {
-		panic("init config failed")
-	}
-	defaultServerCfgMgr.LoadConf(path)
-}
-
-func Get(srvName string) *ServerConfig {
-	if defaultServerCfgMgr == nil {
-		return nil
-	}
-	return defaultServerCfgMgr.Get(srvName)
+	mux     sync.RWMutex
+	Servers map[string]*ServerConfig
+	Db      map[string]*DBConfig
 }
 
 func newServerCfgMgr() *ServerCfgMgr {
 	return &ServerCfgMgr{
-		conf: make(map[string]*ServerConfig),
+		Servers: make(map[string]*ServerConfig),
+		Db:      make(map[string]*DBConfig),
 	}
 }
 
 func (scm *ServerCfgMgr) LoadConf(path string) {
-	if scm.conf == nil {
-		scm.conf = make(map[string]*ServerConfig)
-	}
 	data, err := LoadFile(path)
 	if err != nil {
 		panic(err)
 	}
-	err = jsoniter.Unmarshal(data, &scm.conf)
+
+	scm.mux.Lock()
+	defer scm.mux.Unlock()
+
+	err = jsoniter.Unmarshal(data, scm)
 	if err != nil {
 		panic(err)
 	}
 }
 
-func (scm *ServerCfgMgr) Get(key string) *ServerConfig {
-	if scm.conf == nil {
+func (scm *ServerCfgMgr) GetServer(key string) *ServerConfig {
+	if scm.Servers == nil {
 		return nil
 	}
-	v, ok := scm.conf[key]
+
+	scm.mux.RLock()
+	v, ok := scm.Servers[key]
+	scm.mux.RUnlock()
+
 	if !ok {
 		return nil
 	}
 	return v
 }
 
-func LoadFile(path string) ([]byte, error) {
-	return ioutil.ReadFile(path)
-}
+func (scm *ServerCfgMgr) GetDB(key string) *DBConfig {
+	if scm.Db == nil {
+		return nil
+	}
 
-func GetConfPath(path ...string) string {
-	dir, err := filepath.Abs(filepath.Dir("."))
-	if err != nil {
-		return ""
+	scm.mux.RLock()
+	v, ok := scm.Db[key]
+	scm.mux.RUnlock()
+
+	if !ok {
+		return nil
 	}
-	if len(path) > 0 {
-		return filepath.Join(dir, path[0])
-	}
-	return filepath.Join(dir, defaultCfgPath)
+	return v
 }

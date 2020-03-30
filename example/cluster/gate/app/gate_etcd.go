@@ -17,13 +17,13 @@ import (
 )
 
 func (gs *GateServer) watch() bool {
-	etcdCfg := conf.Get("etcd")
+	etcdCfg := conf.GetServer("etcd")
 	if etcdCfg == nil {
 		logger.Error("etcd config error")
 		return false
 	}
 
-	srvCfg := conf.Get(gs.Name())
+	srvCfg := gs.GetCfg()
 	if srvCfg == nil {
 		logger.Errorf("%v config load failed", gs.Name())
 		return false
@@ -35,7 +35,7 @@ func (gs *GateServer) watch() bool {
 		return false
 	}
 
-	key := fmt.Sprintf("%v", common.ETCD_LOGIC_PATH)
+	key := fmt.Sprintf("%v/%v", common.ETCD_LOGIC_PATH, srvCfg.WatchGroup)
 	gs.etcdMgr.Watch(key, func(k, v []byte) {
 		sd := &selector.SessionData{}
 		err := common.Unmarshal(v, sd)

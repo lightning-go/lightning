@@ -13,10 +13,11 @@ import (
 	"fmt"
 	"github.com/lightning-go/lightning/example/cluster/common"
 	"github.com/lightning-go/lightning/selector"
+	"github.com/lightning-go/lightning/utils"
 )
 
 func (ls *LogicServer) registerEtcd() bool {
-	etcdCfg := conf.Get("etcd")
+	etcdCfg := conf.GetServer("etcd")
 	if etcdCfg == nil {
 		logger.Error("etcd config error")
 		return false
@@ -37,7 +38,10 @@ func (ls *LogicServer) keepOnline() {
 		return
 	}
 
-	key := fmt.Sprintf("%v/%v", common.ETCD_LOGIC_PATH, ls.Name())
+	cfg := ls.GetCfg()
+	group := utils.IF(cfg != nil, cfg.Group, "group").(string)
+
+	key := fmt.Sprintf("%v/%v/%v", common.ETCD_LOGIC_PATH, group, ls.Name())
 	name := ls.Name()
 	host := ls.Host()
 

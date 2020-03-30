@@ -27,9 +27,9 @@ type Server struct {
 
 func NewServer(name, confPath string) *Server {
 	conf.InitCfg(confPath)
-	cfg := conf.Get(name)
+	cfg := conf.GetServer(name)
 	if cfg == nil {
-		logger.Errorf("%v config load failed", name)
+		panic(fmt.Sprintf("%v config load failed", name))
 		return nil
 	}
 
@@ -50,7 +50,7 @@ func NewServer(name, confPath string) *Server {
 	s.init()
 
 	for _, remoteName := range cfg.Remotes {
-		rCfg := conf.Get(remoteName)
+		rCfg := conf.GetServer(remoteName)
 		if rCfg == nil {
 			continue
 		}
@@ -103,6 +103,10 @@ func (s *Server) Start() {
 	})
 
 	logger.Infof("%v is running", s.name)
+}
+
+func (s *Server) GetCfg() *conf.ServerConfig {
+	return s.cfg
 }
 
 func (s *Server) Host() string {

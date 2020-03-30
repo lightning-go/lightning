@@ -6,9 +6,22 @@
 package conf
 
 import (
-	"sync"
 	"time"
+	"sync"
 )
+
+var globalVal *GlobalVal
+var globalOnce sync.Once
+
+func init() {
+	globalOnce.Do(func() {
+		globalVal = newGlobalVal()
+	})
+}
+
+func GetGlobalVal() *GlobalVal {
+	return globalVal
+}
 
 type GlobalVal struct {
 	MaxConnNum    int   //最大连接数
@@ -38,17 +51,4 @@ func newGlobalVal() *GlobalVal {
 		WriteWait:        time.Second * 60,
 		RedisIdleTimeout: time.Second * 60,
 	}
-}
-
-var globalVal *GlobalVal
-var globalOnce sync.Once
-
-func init() {
-	globalOnce.Do(func() {
-		globalVal = newGlobalVal()
-	})
-}
-
-func GetGlobalVal() *GlobalVal {
-	return globalVal
 }
