@@ -8,6 +8,7 @@ package db
 import (
 	"github.com/gomodule/redigo/redis"
 	"github.com/lightning-go/lightning/conf"
+	"time"
 )
 
 func InitRedisPool(addr string, maxIdle, maxActive int) *redis.Pool {
@@ -21,6 +22,10 @@ func InitRedisPool(addr string, maxIdle, maxActive int) *redis.Pool {
 				panic(err)
 			}
 			return conn, err
+		},
+		TestOnBorrow: func(c redis.Conn, t time.Time) error {
+			_, err := c.Do("PING")
+			return err
 		},
 	}
 }
