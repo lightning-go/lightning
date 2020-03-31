@@ -24,15 +24,17 @@ func NewSafeQueue() *SafeQueue {
 
 func (sq *SafeQueue) Put(v interface{}) {
 	sq.mux.Lock()
+	defer sq.mux.Unlock()
 	if sq.stop {
 		return
 	}
 	sq.queue = append(sq.queue, v)
-	sq.mux.Unlock()
+	sq.cond.Signal()
 }
 
 func (sq *SafeQueue) Take(newList *[]interface{}) {
 	sq.mux.Lock()
+	defer sq.mux.Unlock()
 	if sq.stop {
 		return
 	}
@@ -45,8 +47,6 @@ func (sq *SafeQueue) Take(newList *[]interface{}) {
 	copy(*newList, sq.queue)
 
 	sq.queue = sq.queue[0:0]
-
-	sq.mux.Unlock()
 }
 
 func (sq *SafeQueue) Stop() {

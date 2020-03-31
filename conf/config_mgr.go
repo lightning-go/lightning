@@ -87,12 +87,12 @@ func (sc *ServerConfig) GetDefaultLogConf() *LogConfig {
 }
 
 type DBConfig struct {
-	DbType string `json:"dbType"`
-	Name   string `json:"name"`
-	Host   string `json:"host"`
-	Port   int    `json:"port"`
-	User   string `json:"user"`
-	Pwd    string `json:"pwd"`
+	Type string `json:"type"`
+	Name string `json:"name"`
+	Host string `json:"host"`
+	Port int    `json:"port"`
+	User string `json:"user"`
+	Pwd  string `json:"pwd"`
 }
 
 type ServerCfgMgr struct {
