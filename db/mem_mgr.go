@@ -301,6 +301,8 @@ func (mm *MemMgr) getSpecialPKValue(keys ...interface{}) string {
 			val = fmt.Sprintf("%v", k.(float64))
 		case int:
 			val = strconv.Itoa(k.(int))
+		case int64:
+			val = strconv.FormatInt(k.(int64), 10)
 		default:
 			continue
 		}
@@ -334,6 +336,8 @@ func (mm *MemMgr) getPKValue(memMode *MemMode) string {
 			val = fmt.Sprintf("%v", d.(float64))
 		case int:
 			val = strconv.Itoa(d.(int))
+		case int64:
+			val = strconv.FormatInt(d.(int64), 10)
 		default:
 			continue
 		}
@@ -524,6 +528,8 @@ func (mm *MemMgr) QueryRowByPKs(field string, values ...interface{}) (memMode *M
 			valStr.WriteString(v)
 		case int:
 			valStr.WriteString(strconv.Itoa(val.(int)))
+		case int64:
+			valStr.WriteString(strconv.FormatInt(val.(int64), 10))
 		default:
 			continue
 		}
@@ -764,7 +770,7 @@ func (mm *MemMgr) AddData(memMode *MemMode, isPKIncrs ...bool) {
 			mm.log.Error("Get new Id failed")
 			return
 		}
-		newId := fmt.Sprintf("%d", Id.(int64))
+		newId := Id.(int64)
 		memMode.Data[mm.pk] = newId
 	}
 
@@ -1005,6 +1011,8 @@ func (mm *MemMgr) GetInsertFieldAndValue(memMode *MemMode) (fields, values strin
 			valueStr.WriteString("'")
 		case int:
 			valueStr.WriteString(strconv.Itoa(v.(int)))
+		case int64:
+			valueStr.WriteString(strconv.FormatInt(v.(int64), 10))
 		case float64:
 			val := fmt.Sprintf("%v", v.(float64))
 			valueStr.WriteString(val)
@@ -1059,6 +1067,10 @@ func (mm *MemMgr) GetUpdateFieldAndValue(memMode *MemMode) (fields, where string
 			fieldStr.WriteString(k)
 			fieldStr.WriteString("=")
 			fieldStr.WriteString(strconv.Itoa(v.(int)))
+		case int64:
+			fieldStr.WriteString(k)
+			fieldStr.WriteString("=")
+			fieldStr.WriteString(strconv.FormatInt(v.(int64), 10))
 		case map[string]interface{}:
 			d, err := jsoniter.Marshal(v)
 			if err != nil {
@@ -1118,6 +1130,10 @@ func (mm *MemMgr) GetPKCond(memMode *MemMode) string {
 			whereStr.WriteString(key)
 			whereStr.WriteString("=")
 			whereStr.WriteString(strconv.Itoa(d.(int)))
+		case int64:
+			whereStr.WriteString(key)
+			whereStr.WriteString("=")
+			whereStr.WriteString(strconv.FormatInt(d.(int64), 10))
 		}
 
 		if idx < pkLen {

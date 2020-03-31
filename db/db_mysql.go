@@ -26,12 +26,14 @@ func NewMysqlMgr(dbName, user, pwd, host string) *MysqlMgr {
 }
 
 func (mm *MysqlMgr) QueryPrimaryKey(pk, tableName string) uint64 {
-	s := fmt.Sprintf("SELECT %s FROM %s DESC LIMIT 1;", pk, tableName)
+	s := fmt.Sprintf("SELECT %s FROM %s ORDER BY %s DESC LIMIT 1;", pk, tableName, pk)
 	row := mm.dbConn.Raw(s).Row()
 	var id uint64
 	err := row.Scan(&id)
 	if err != nil {
-		mm.log.Error(err)
+		if err != sql.ErrNoRows {
+			mm.log.Error(err)
+		}
 		return 0
 	}
 	return id
@@ -53,7 +55,9 @@ func (mm *MysqlMgr) QueryCond(tableName, where string, f func(*sql.Rows)) {
 	s := fmt.Sprintf("SELECT * FROM %s WHERE %s;", tableName, where)
 	rows, err := mm.dbConn.Raw(s).Rows()
 	if err != nil {
-		mm.log.Error(err)
+		if err != sql.ErrNoRows {
+			mm.log.Error(err)
+		}
 		return
 	}
 	f(rows)
@@ -67,7 +71,9 @@ func (mm *MysqlMgr) QueryKeyCond(tableName, key, where string, f func(*sql.Rows)
 	s := fmt.Sprintf("SELECT %s FROM %s WHERE %s;", key, tableName, where)
 	rows, err := mm.dbConn.Raw(s).Rows()
 	if err != nil {
-		mm.log.Error(err)
+		if err != sql.ErrNoRows {
+			mm.log.Error(err)
+		}
 		return
 	}
 	f(rows)
@@ -81,7 +87,9 @@ func (mm *MysqlMgr) Query(tableName string, f func(*sql.Rows)) {
 	s := fmt.Sprintf("SELECT * FROM %s;", tableName)
 	rows, err := mm.dbConn.Raw(s).Rows()
 	if err != nil {
-		mm.log.Error(err)
+		if err != sql.ErrNoRows {
+			mm.log.Error(err)
+		}
 		return
 	}
 	f(rows)

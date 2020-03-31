@@ -9,19 +9,17 @@ import (
 	"github.com/gomodule/redigo/redis"
 	"github.com/lightning-go/lightning/conf"
 	"time"
+	"github.com/mna/redisc"
+	"log"
 )
 
-func InitRedisPool(addr string, maxIdle, maxActive int) *redis.Pool {
+func createRedisPool(addr string, maxIdle, maxActive int, opts ...redis.DialOption) *redis.Pool {
 	return &redis.Pool{
-		MaxIdle: maxIdle,
-		MaxActive: maxActive,
+		MaxIdle:     maxIdle,
+		MaxActive:   maxActive,
 		IdleTimeout: conf.GetGlobalVal().RedisIdleTimeout,
 		Dial: func() (redis.Conn, error) {
-			conn, err := redis.Dial("tcp", addr)
-			if err != nil {
-				panic(err)
-			}
-			return conn, err
+			return redis.Dial("tcp", addr, opts...)
 		},
 		TestOnBorrow: func(c redis.Conn, t time.Time) error {
 			_, err := c.Do("PING")
@@ -30,14 +28,36 @@ func InitRedisPool(addr string, maxIdle, maxActive int) *redis.Pool {
 	}
 }
 
-type RedisClient struct {
-	pool *redis.Pool
+type IRedisClient interface {
+	Get() redis.Conn
+	Close() error
 }
 
-func NewRedisClient(pool *redis.Pool) *RedisClient {
-	if pool == nil {
-		return nil
+type RedisClient struct {
+	pool IRedisClient
+}
+
+func NewRedisClusterClient(hostList []string, maxIdle, maxActive int) *RedisClient {
+	cluster := &redisc.Cluster{
+		StartupNodes: hostList,
+		DialOptions:  []redis.DialOption{redis.DialConnectTimeout(5 * time.Second)},
+		CreatePool: func(addr string, opts ...redis.DialOption) (*redis.Pool, error) {
+			return createRedisPool(addr, maxIdle, maxActive, opts...), nil
+		},
 	}
+
+	if err := cluster.Refresh(); err != nil {
+		log.Fatalf("Refresh failed: %v", err)
+	}
+
+	rc := &RedisClient{
+		pool: cluster,
+	}
+	return rc
+}
+
+func NewRedisClient(host string, maxIdle, maxActive int) *RedisClient {
+	pool := createRedisPool(host, maxIdle, maxActive)
 	rc := &RedisClient{
 		pool: pool,
 	}

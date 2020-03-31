@@ -197,6 +197,7 @@ func redisTest(rc *db.RedisClient) {
 	}
 	rc.Set("a", 3, 5)
 	//rc.Expire("a", 6)
+	fmt.Println(rc.Get("a"))
 }
 
 func main() {
@@ -244,13 +245,7 @@ func main() {
 
 	})
 
-	pool := db.InitRedisPool("localhost:6379", 3, 0)
-	if pool == nil {
-		fmt.Println("init redis pool error")
-		return
-	}
-
-	rc := db.NewRedisClient(pool)
+	rc := db.NewRedisClient("localhost:6379", 3, 0)
 	defer rc.Close()
 
 	//
