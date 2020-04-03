@@ -24,16 +24,16 @@ const (
 	MEM_STATE_DEL
 )
 
-type MemMode struct {
-	State int                    `json:"state"`
-	Data  map[string]interface{} `json:"data"`
-}
-
 func NewMemMode() *MemMode {
 	return &MemMode{
 		State: MEM_STATE_ORI,
 		Data:  make(map[string]interface{}),
 	}
+}
+
+type MemMode struct {
+	State int                    `json:"state"`
+	Data  map[string]interface{} `json:"data"`
 }
 
 type MemMgr struct {
@@ -554,7 +554,7 @@ func (mm *MemMgr) QueryRow(field, value string) (memMode *MemMode) {
 	where := fmt.Sprintf("%s = '%s'", field, value)
 	mm.dbMgr.QueryCond(mm.tableName, where, func(rows *sql.Rows) {
 		memList := mm.LoadRows(rows, true)
-		if memList == nil  || len(memList) == 0 {
+		if memList == nil || len(memList) == 0 {
 			return
 		}
 		memMode = memList[0]

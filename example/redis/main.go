@@ -8,14 +8,16 @@ package main
 import (
 	"github.com/lightning-go/lightning/db"
 	"fmt"
-	"database/sql"
 	"strconv"
+	"github.com/jinzhu/gorm"
+	"database/sql"
 )
 
 type User struct {
-	Id     int    `db:"id"`
-	Name   string `db:"name"`
-	Remark int    `db:"remark"`
+	Id     int     `gorm:"column:id"`
+	Name   string  `gorm:"column:name"`
+	Remark int     `gorm:"column:remark"`
+	Test   float32 `gorm:"column:test"`
 }
 
 func singleKeyTest(rc *db.RedisClient) {
@@ -191,23 +193,7 @@ func multiKeyTest(rc *db.RedisClient) {
 
 }
 
-func redisTest(rc *db.RedisClient) {
-	if rc == nil {
-		return
-	}
-	rc.Set("a", 3, 5)
-	//rc.Expire("a", 6)
-	fmt.Println(rc.Get("a"))
-}
-
-func main() {
-	dbMgr := db.NewMysqlMgr("test", "root", "123456", "localhost:3306")
-	if dbMgr == nil {
-		fmt.Println("create db mgr error")
-		return
-	}
-	defer dbMgr.Close()
-
+func testMgr(dbMgr *db.MysqlMgr) {
 	dbMgr.Query("user", func(rows *sql.Rows) {
 		if rows == nil {
 			return
@@ -244,19 +230,104 @@ func main() {
 		}
 
 	})
+}
+
+func redisTest(rc *db.RedisClient) {
+	if rc == nil {
+		return
+	}
+	rc.Set("a", 3, 5)
+	//rc.Expire("a", 6)
+	fmt.Println(rc.Get("a"))
+}
+
+func testORM(db *gorm.DB) {
+	var users []*User
+	err := db.Find(&users).Error
+	if err == nil {
+		for _, u := range users {
+			fmt.Println(u)
+		}
+	}
+	var user User
+	err = db.First(&user).Error
+	fmt.Println(user, err)
+
+	var user1 User
+	err = db.Last(&user1).Error
+	fmt.Println(user1, err)
+
+	var user2 User
+	err = db.First(&user2, 2).Error
+	fmt.Println(user2, err)
+
+	var user3 User
+	err = db.First(&user3, "name = ?", "Toney").Error
+	fmt.Println(user3, err)
+
+	var user4 User
+	err = db.First(&user4, "id = ?", 2).Error
+	fmt.Println(user4, err)
+
+	var user5 User
+	err = db.Where("id = ?", 2).First(&user5).Error
+	fmt.Println(user5, err)
+
+	err = db.Not("name", "Toney").Find(&users).Error
+	for _, u := range users {
+		fmt.Println(u)
+	}
+
+	var user6 User
+	err = db.Not("name", "Jim").First(&user6).Error
+	fmt.Println(user6, err)
+
+	u1 := User{
+		Name: "tom222",
+		Remark: 1,
+		Test: 222,
+	}
+	err = db.Create(&u1).Error
+	fmt.Println(err)
+
+
+	user5.Name = "jim777"
+	err = db.Save(&user5).Error
+	//err = db.Model(&user5).Update("name", "jim999").Error
+	fmt.Println(err)
+
+
+	//err = db.Delete(&user5).Error
+	fmt.Println(err)
+
+	err = db.Where("name like ?", "jim888").Delete(User{}).Error
+	fmt.Println(err)
+
+	fmt.Println("-----------------------------------------------------------")
+}
+
+func main() {
+	dbMgr := db.NewMysqlMgr("test", "root", "123456", "localhost:3306")
+	if dbMgr == nil {
+		fmt.Println("create db mgr error")
+		return
+	}
+	defer dbMgr.Close()
+
+	testORM(dbMgr.DBConn())
+
+	//testMgr(dbMgr)
 
 	rc := db.NewRedisClient("localhost:6379", 3, 0)
 	defer rc.Close()
 
 	//
-	redisTest(rc)
+	//redisTest(rc)
 
 	//
 	//singleKeyTest(rc)
 
 	//
 	//multiKeyTest(rc)
-
-
 
 }
