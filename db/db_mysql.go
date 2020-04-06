@@ -25,14 +25,15 @@ func NewMysqlMgr(dbName, user, pwd, host string) *MysqlMgr {
 	return mm
 }
 
-func (mm *MysqlMgr) QueryPrimaryKey(pk, tableName string) uint64 {
+func (mm *MysqlMgr) QueryPrimaryKey(pk, tableName string) int64 {
 	s := fmt.Sprintf("SELECT %s FROM %s ORDER BY %s DESC LIMIT 1;", pk, tableName, pk)
 	row := mm.dbConn.Raw(s).Row()
-	var id uint64
+	var id int64
 	err := row.Scan(&id)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			mm.log.Error(err)
+			return -1
 		}
 		return 0
 	}
@@ -110,3 +111,12 @@ func (mm *MysqlMgr) Delete(tableName, where string) error {
 	s := fmt.Sprintf("DELETE FROM %s WHERE %s;", tableName, where)
 	return mm.dbConn.Exec(s).Error
 }
+
+func (mm *MysqlMgr) NewRecord(v interface{}) error {
+	return mm.dbConn.Create(v).Error
+}
+
+func (mm *MysqlMgr) SaveRecord(v interface{}) error {
+	return mm.dbConn.Save(v).Error
+}
+

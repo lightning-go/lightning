@@ -24,7 +24,7 @@ const (
 
 type IDBMgr interface {
 	Close()
-	QueryPrimaryKey(pk, tableName string) uint64
+	QueryPrimaryKey(pk, tableName string) int64
 	QueryOneCond(tableName, where string, f func(*sql.Row))
 	QueryCond(tableName, where string, f func(*sql.Rows))
 	QueryKeyCond(tableName, key, where string, f func(*sql.Rows))
@@ -32,6 +32,8 @@ type IDBMgr interface {
 	Insert(tableName, fields, value string) error
 	Update(tableName, fields, value string) error
 	Delete(tableName, where string) error
+	NewRecord(v interface{}) error
+	SaveRecord(v interface{}) error
 }
 
 type DBMgr struct {

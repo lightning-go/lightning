@@ -14,6 +14,9 @@ import (
 	"sync"
 	"github.com/json-iterator/go"
 	"errors"
+	"github.com/lightning-go/lightning/utils"
+	"sync/atomic"
+	"runtime/debug"
 )
 
 var ConvertTypeError = errors.New("convert type error")
@@ -38,22 +41,24 @@ func FreeMemModeEx(v *MemModeEx) {
 }
 
 type MemModeEx struct {
-	State int    `json:"state"`
-	Data  []byte `json:"data"`
+	State int
+	Data  interface{}
 }
 
 type MemMgrEx struct {
-	rc                *RedisClient
-	dbName            string
-	tableName         string
-	key               string
-	pKey              string
-	pk                string
-	isPkIncr          bool
-	log               *logger.Logger
-	dbMgr             IDBMgr
-	producePKCallback func() string
-	produceIKCallback func() string
+	rc           *RedisClient
+	dbName       string
+	tableName    string
+	key          string
+	pKey         string
+	pk           string
+	pks          []string
+	isPkIncr     bool
+	log          *logger.Logger
+	dbMgr        IDBMgr
+	queue        *utils.SafeQueue
+	queueWorking int32
+	queueWait    sync.WaitGroup
 }
 
 func NewMemMgrEx(rc *RedisClient, initPK bool, dbName, tableName string, pks []string) *MemMgrEx {
@@ -75,13 +80,16 @@ func NewMemMgrEx(rc *RedisClient, initPK bool, dbName, tableName string, pks []s
 	}
 
 	mm := &MemMgrEx{
-		rc:        rc,
-		dbName:    dbName,
-		tableName: tableName,
-		key:       fmt.Sprintf("%s:%s", dbName, tableName),
-		pKey:      fmt.Sprintf("%s:%s:pk", dbName, tableName),
-		log:       log,
-		dbMgr:     GetDB(dbName),
+		rc:           rc,
+		dbName:       dbName,
+		tableName:    tableName,
+		key:          fmt.Sprintf("%s:%s", dbName, tableName),
+		pKey:         fmt.Sprintf("%s:%s:pk", dbName, tableName),
+		pks:          pks,
+		log:          log,
+		dbMgr:        GetDB(dbName),
+		queue:        utils.NewSafeQueue(),
+		queueWorking: 0,
 	}
 
 	n := pksLen - 1
@@ -104,7 +112,7 @@ func NewMemMgrEx(rc *RedisClient, initPK bool, dbName, tableName string, pks []s
 
 func (mm *MemMgrEx) initPKValue() {
 	pkValue := mm.dbMgr.QueryPrimaryKey(mm.pk, mm.tableName)
-	if pkValue == 0 {
+	if pkValue == -1 {
 		return
 	}
 	_, err := mm.rc.Set(mm.pKey, pkValue)
@@ -113,7 +121,7 @@ func (mm *MemMgrEx) initPKValue() {
 	}
 }
 
-func (mm *MemMgrEx) PKIncr() interface{} {
+func (mm *MemMgrEx) pkIncr() interface{} {
 	v, err := mm.rc.Incr(mm.pKey)
 	if err != nil {
 		mm.log.Error("pk value incr failed")
@@ -124,9 +132,9 @@ func (mm *MemMgrEx) PKIncr() interface{} {
 
 func (mm *MemMgrEx) GetPKIncr() int64 {
 	if mm.isPkIncr {
-		Id := mm.PKIncr()
+		Id := mm.pkIncr()
 		if Id == nil {
-			mm.log.Error("Get new Id failed")
+			mm.log.Error("get new Id failed")
 			return -1
 		}
 		return Id.(int64)
@@ -139,10 +147,6 @@ func (mm *MemMgrEx) SetLogRotation(maxAge, rotationTime time.Duration, pathFile 
 		mm.log = logger.NewLogger(logger.TRACE)
 	}
 	mm.log.SetRotation(maxAge, rotationTime, pathFile)
-}
-
-func (mm *MemMgrEx) Close() {
-	mm.rc.Close()
 }
 
 func (mm *MemMgrEx) produceFieldKey(prefix, key string) string {
@@ -193,22 +197,71 @@ func (mm *MemMgrEx) convertKey(v interface{}) (val string, err error) {
 	return
 }
 
-func (mm *MemMgrEx) convertData(d interface{}) *MemModeEx {
-	v, ok := d.([]byte)
-	if !ok {
-		mm.log.Error("convert type error", logger.Fields{
-			"value": d,
-		})
-		return nil
+func (mm *MemMgrEx) GetMultiPKValue(keyValMap map[string]interface{}) (string, string) {
+	if keyValMap == nil {
+		return "", ""
+	}
+	n := len(keyValMap)
+	if n == 0 {
+		return "", ""
 	}
 
-	memMode := NewMemModeEx()
-	err := jsoniter.Unmarshal(v, memMode)
-	if err != nil {
-		mm.log.Error(err)
-		return nil
+	n--
+	idx := 0
+	var keyStr strings.Builder
+	var condStr strings.Builder
+
+	for _, k := range mm.pks {
+		v, ok := keyValMap[k]
+		if !ok {
+			return "", ""
+		}
+		val, err := mm.convertKey(v)
+		if err != nil {
+			continue
+		}
+		keyStr.WriteString(val)
+
+		cond := mm.GetCond(k, v)
+		if len(cond) > 0 {
+			condStr.WriteString(cond)
+		}
+
+		if idx < n {
+			keyStr.WriteString(":")
+			condStr.WriteString(" and ")
+		}
+		idx++
 	}
-	return memMode
+
+	return keyStr.String(), condStr.String()
+}
+
+func (mm *MemMgrEx) GetCond(key string, val interface{}) string {
+	var whereStr strings.Builder
+
+	switch val.(type) {
+	case string:
+		whereStr.WriteString(key)
+		whereStr.WriteString("=")
+		whereStr.WriteString("'")
+		whereStr.WriteString(val.(string))
+		whereStr.WriteString("'")
+	case float64:
+		whereStr.WriteString(key)
+		whereStr.WriteString("=")
+		whereStr.WriteString(fmt.Sprintf("%v", val.(float64)))
+	case int:
+		whereStr.WriteString(key)
+		whereStr.WriteString("=")
+		whereStr.WriteString(strconv.Itoa(val.(int)))
+	case int64:
+		whereStr.WriteString(key)
+		whereStr.WriteString("=")
+		whereStr.WriteString(strconv.FormatInt(val.(int64), 10))
+	}
+
+	return whereStr.String()
 }
 
 func (mm *MemMgrEx) Set(key string, v interface{}, expire ...int64) (err error) {
@@ -295,46 +348,7 @@ func (mm *MemMgrEx) HDelIK(ik, key string) (err error) {
 	return
 }
 
-func (mm *MemMgrEx) SetData(key interface{}, d interface{}) bool {
-	if d == nil {
-		return false
-	}
-	k, err := mm.convertKey(key)
-	if err != nil {
-		mm.log.Error(err)
-		return false
-	}
-
-	d1, err := jsoniter.Marshal(d)
-	if err != nil {
-		mm.log.Error(err)
-		return false
-	}
-
-	memMode := NewMemModeEx()
-	memMode.State = MEM_STATE_NEW
-	memMode.Data = d1
-
-	v, err := jsoniter.Marshal(memMode)
-	if err != nil {
-		mm.log.Error(err)
-		return false
-	}
-
-	err = mm.HSet(k, v)
-	if err != nil {
-		mm.log.Error(err)
-		return false
-	}
-	return true
-}
-
-func (mm *MemMgrEx) SetDataByMultiPK(d interface{}, key ...interface{}) bool {
-	k := mm.produceSpecialKey(key...)
-	return mm.SetData(k, d)
-}
-
-func (mm *MemMgrEx) SetDataByIK(ikName string, ikValue, pkValue interface{}) {
+func (mm *MemMgrEx) SetDataIK(ikName string, ikValue, pkValue interface{}) {
 	ikVal, err := mm.convertKey(ikValue)
 	if err != nil {
 		mm.log.Error(err)
@@ -349,14 +363,59 @@ func (mm *MemMgrEx) SetDataByIK(ikName string, ikValue, pkValue interface{}) {
 	mm.HSetIK(ikName, ikVal, value)
 }
 
-func (mm *MemMgrEx) GetData(key interface{}) []byte {
+func (mm *MemMgrEx) setData(state int, key interface{}, d interface{}) bool {
+	if d == nil {
+		return false
+	}
 	k, err := mm.convertKey(key)
 	if err != nil {
 		mm.log.Error(err)
-		return nil
+		return false
 	}
 
-	v, err := mm.HGet(k)
+	v, err := jsoniter.Marshal(d)
+	if err != nil {
+		mm.log.Error(err)
+		return false
+	}
+
+	mm.putQueue(state, d)
+
+	err = mm.HSet(k, v)
+	if err != nil {
+		mm.log.Error(err)
+		return false
+	}
+
+	return true
+}
+
+func (mm *MemMgrEx) AddData(key interface{}, d interface{}) bool {
+	return mm.setData(MEM_STATE_NEW, key, d)
+}
+
+func (mm *MemMgrEx) AddDataByMultiPK(keyValMap map[string]interface{}, d interface{}) bool {
+	keys, _ := mm.GetMultiPKValue(keyValMap)
+	if len(keys) == 0 {
+		return false
+	}
+	return mm.AddData(keys, d)
+}
+
+func (mm *MemMgrEx) UpdateData(key interface{}, d interface{}) bool {
+	return mm.setData(MEM_STATE_UPDATE, key, d)
+}
+
+func (mm *MemMgrEx) UpdateDataByMultiPK(keyValMap map[string]interface{}, d interface{}) bool {
+	keys, _ := mm.GetMultiPKValue(keyValMap)
+	if len(keys) == 0 {
+		return false
+	}
+	return mm.UpdateData(keys, d)
+}
+
+func (mm *MemMgrEx) getData(key string) []byte {
+	v, err := mm.HGet(key)
 	if err != nil {
 		mm.log.Error(err)
 		return nil
@@ -368,25 +427,30 @@ func (mm *MemMgrEx) GetData(key interface{}) []byte {
 	d, ok := v.([]byte)
 	if !ok {
 		mm.log.Error("convert type error", logger.Fields{
-			"key":   k,
+			"key":   key,
 			"value": v,
 		})
 		return nil
 	}
 
-	memMode := NewMemModeEx()
-	err = jsoniter.Unmarshal(d, memMode)
+	return d
+}
+
+func (mm *MemMgrEx) GetData(key interface{}) []byte {
+	k, err := mm.convertKey(key)
 	if err != nil {
 		mm.log.Error(err)
 		return nil
 	}
-
-	return memMode.Data
+	return mm.getData(k)
 }
 
-func (mm *MemMgrEx) GetDataByMultiPK(key ...interface{}) []byte {
-	k := mm.produceSpecialKey(key...)
-	return mm.GetData(k)
+func (mm *MemMgrEx) GetDataByMultiPK(keyValMap map[string]interface{}) []byte {
+	keys, _ := mm.GetMultiPKValue(keyValMap)
+	if len(keys) == 0 {
+		return nil
+	}
+	return mm.GetData(keys)
 }
 
 func (mm *MemMgrEx) GetDataByIK(ikName string, ikValue interface{}) []byte {
@@ -400,6 +464,10 @@ func (mm *MemMgrEx) GetDataByIK(ikName string, ikValue interface{}) []byte {
 		mm.log.Error(err)
 		return nil
 	}
+	if d == nil {
+		return nil
+	}
+
 	v, ok := d.([]byte)
 	if !ok {
 		mm.log.Error("convert type error", logger.Fields{
@@ -429,14 +497,7 @@ func (mm *MemMgrEx) GetDataByIK(ikName string, ikValue interface{}) []byte {
 		return nil
 	}
 
-	memMode := NewMemModeEx()
-	err = jsoniter.Unmarshal(v, memMode)
-	if err != nil {
-		mm.log.Error(err)
-		return nil
-	}
-
-	return memMode.Data
+	return v
 }
 
 func (mm *MemMgrEx) DelData(key interface{}) bool {
@@ -445,6 +506,12 @@ func (mm *MemMgrEx) DelData(key interface{}) bool {
 		mm.log.Error(err)
 		return false
 	}
+
+	cond := mm.GetCond(mm.pk, key)
+	if len(cond) > 0 {
+		mm.putQueue(MEM_STATE_DEL, cond)
+	}
+
 	err = mm.HDel(k)
 	if err != nil {
 		mm.log.Error(err)
@@ -453,12 +520,20 @@ func (mm *MemMgrEx) DelData(key interface{}) bool {
 	return true
 }
 
-func (mm *MemMgrEx) DelDataByMultiPK(key ...interface{}) bool {
-	k := mm.produceSpecialKey(key...)
-	if len(k) == 0 {
+func (mm *MemMgrEx) DelDataByMultiPK(keyValMap map[string]interface{}) bool {
+	keys, cond := mm.GetMultiPKValue(keyValMap)
+	if len(keys) == 0 {
 		return false
 	}
-	return mm.DelData(k)
+
+	mm.putQueue(MEM_STATE_DEL, cond)
+
+	err := mm.HDel(keys)
+	if err != nil {
+		mm.log.Error(err)
+		return false
+	}
+	return true
 }
 
 func (mm *MemMgrEx) DelDataByIK(ikName string, ikValue interface{}) bool {
@@ -473,4 +548,81 @@ func (mm *MemMgrEx) DelDataByIK(ikName string, ikValue interface{}) bool {
 		return false
 	}
 	return true
+}
+
+func (mm *MemMgrEx) putQueue(state int, d interface{}) {
+	if d == nil {
+		return
+	}
+	v := atomic.LoadInt32(&mm.queueWorking)
+	if v == 0 {
+		mm.queueWait.Add(1)
+		mm.enableQueue()
+		mm.queueWait.Wait()
+	}
+	memMode := NewMemModeEx()
+	memMode.State = state
+	memMode.Data = d
+	mm.queue.Put(memMode)
+}
+
+func (mm *MemMgrEx) enableQueue() {
+	go func() {
+		logger.Tracef("enable memMode queue")
+		atomic.StoreInt32(&mm.queueWorking, 1)
+		mm.queueWait.Done()
+
+		defer func() {
+			atomic.StoreInt32(&mm.queueWorking, 0)
+			err := recover()
+			if err != nil {
+				logger.Error(err)
+				logger.Error(string(debug.Stack()))
+			}
+		}()
+
+		for {
+			var taskList []interface{} = nil
+			mm.queue.Take(&taskList)
+
+			if taskList == nil {
+				continue
+			}
+			for _, t := range taskList {
+				if t == nil {
+					continue
+				}
+				d, ok := t.(*MemModeEx)
+				if !ok || d == nil {
+					continue
+				}
+				if d.Data == nil {
+					continue
+				}
+				mm.syncMemMode(d.State, d.Data)
+				FreeMemModeEx(d)
+			}
+		}
+	}()
+}
+
+func (mm *MemMgrEx) syncMemMode(state int, d interface{}) {
+	if d == nil {
+		return
+	}
+	var err error
+	switch state {
+	case MEM_STATE_NEW:
+		err = mm.dbMgr.NewRecord(d)
+	case MEM_STATE_UPDATE:
+		err = mm.dbMgr.SaveRecord(d)
+	case MEM_STATE_DEL:
+		cond, ok := d.(string)
+		if ok {
+			err = mm.dbMgr.Delete(mm.tableName, cond)
+		}
+	}
+	if err != nil {
+		mm.log.Error(err)
+	}
 }

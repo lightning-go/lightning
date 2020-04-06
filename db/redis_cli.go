@@ -6,11 +6,11 @@
 package db
 
 import (
-	"github.com/gomodule/redigo/redis"
 	"github.com/lightning-go/lightning/conf"
-	"time"
+	"github.com/lightning-go/lightning/logger"
+	"github.com/gomodule/redigo/redis"
 	"github.com/mna/redisc"
-	"log"
+	"time"
 )
 
 func createRedisPool(addr string, maxIdle, maxActive int, opts ...redis.DialOption) *redis.Pool {
@@ -46,8 +46,9 @@ func NewRedisClusterClient(hostList []string, maxIdle, maxActive int) *RedisClie
 		},
 	}
 
-	if err := cluster.Refresh(); err != nil {
-		log.Fatalf("Refresh failed: %v", err)
+	err := cluster.Refresh()
+	if err != nil {
+		logger.Errorf("Refresh failed: %v", err)
 	}
 
 	rc := &RedisClient{

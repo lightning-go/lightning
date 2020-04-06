@@ -9,6 +9,7 @@ import (
 	"testing"
 	"fmt"
 	"github.com/json-iterator/go"
+	"time"
 )
 
 type User struct {
@@ -27,11 +28,10 @@ type Player struct {
 
 func testSinglePK(rc *RedisClient) {
 	memUser := NewMemMgrEx(rc, true, "test", "user", []string{"id"})
-	defer memUser.Close()
 
-	d := memUser.GetData(46)
+	id := memUser.GetPKIncr()
+	d := memUser.GetData(id)
 	if d == nil {
-		id := memUser.GetPKIncr()
 		if id > 0 {
 			u := User{
 				Id:     id,
@@ -39,9 +39,9 @@ func testSinglePK(rc *RedisClient) {
 				Remark: 1,
 				Test:   2323.2,
 			}
-			ok := memUser.SetData(u.Id, &u)
+			ok := memUser.AddData(u.Id, &u)
 			if ok {
-				memUser.SetDataByIK("name", u.Name, u.Id)
+				memUser.SetDataIK("name", u.Name, u.Id)
 			}
 		}
 
@@ -66,23 +66,26 @@ func testSinglePK(rc *RedisClient) {
 
 			oldName := u.Name
 			u.Name = "jason22222"
-			ok := memUser.SetData(u.Id, &u)
+			ok := memUser.UpdateData(u.Id, &u)
 			if ok {
-				memUser.SetDataByIK("name", u.Name, u.Id)
+				memUser.SetDataIK("name", u.Name, u.Id)
 				memUser.DelDataByIK("name", oldName)
 			}
 		}
 	}
 
-	memUser.DelData(46)
+	time.Sleep(time.Second * 3)
+	memUser.DelData(1)
 	memUser.DelDataByIK("name", "jason22222")
 }
 
 func testMultiPK(rc *RedisClient) {
 	memPlayer := NewMemMgrEx(rc, false, "test", "player", []string{"id", "name"})
-	defer memPlayer.Close()
 
-	d := memPlayer.GetDataByMultiPK(3, "jason")
+	d := memPlayer.GetDataByMultiPK(map[string]interface{}{
+		"id": 3,
+		"name": "jason",
+	})
 	if d == nil {
 		u := Player{
 			Id:   3,
@@ -90,7 +93,10 @@ func testMultiPK(rc *RedisClient) {
 			Info: "test...",
 			Test: 2323.2,
 		}
-		memPlayer.SetDataByMultiPK(&u, u.Id, u.Name)
+		memPlayer.AddDataByMultiPK(map[string]interface{}{
+			"id": u.Id,
+			"name": u.Name,
+		}, &u)
 
 	} else {
 		u := Player{}
@@ -102,11 +108,18 @@ func testMultiPK(rc *RedisClient) {
 
 			u.Test = 1231.1
 			u.Info = "test...modify"
-			memPlayer.SetDataByMultiPK(&u, u.Id, u.Name)
+			memPlayer.UpdateDataByMultiPK(map[string]interface{}{
+				"id": u.Id,
+				"name": u.Name,
+			}, &u)
 		}
 	}
 
-	memPlayer.DelDataByMultiPK(3, "jason")
+	time.Sleep(time.Second * 3)
+	memPlayer.DelDataByMultiPK(map[string]interface{}{
+		"id": 3,
+		"name": "jason",
+	})
 }
 
 func Test1(t *testing.T) {
@@ -114,6 +127,21 @@ func Test1(t *testing.T) {
 	defer dbMgr.Close()
 
 	rc := NewRedisClient("127.0.0.1:6379", 1, 0)
+	defer rc.Close()
+
 	testSinglePK(rc)
+
+	time.Sleep(time.Second * 3)
+}
+
+func Test2(t *testing.T) {
+	dbMgr := NewMysqlMgr("test", "root", "123456", "127.0.0.1:3306")
+	defer dbMgr.Close()
+
+	rc := NewRedisClient("127.0.0.1:6379", 1, 0)
+	defer rc.Close()
+
 	testMultiPK(rc)
+
+	time.Sleep(time.Second * 3)
 }
