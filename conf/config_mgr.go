@@ -27,6 +27,20 @@ func InitCfg(path string) {
 	}
 }
 
+func GetDefaultLogConf() *LogConfig {
+	if defaultServerCfgMgr == nil {
+		return nil
+	}
+	return defaultServerCfgMgr.GetLogConf("default")
+}
+
+func GetLogConf(logName string) *LogConfig {
+	if defaultServerCfgMgr == nil {
+		return nil
+	}
+	return defaultServerCfgMgr.GetLogConf(logName)
+}
+
 func GetServer(srvName string) *ServerConfig {
 	if defaultServerCfgMgr == nil {
 		return nil
@@ -59,31 +73,22 @@ func GetConfPath(path ...string) string {
 type LogConfig struct {
 	LogLevel     string `json:"logLevel"`
 	LogPath      string `json:"logPath"`
-	MaxAge       int    `json:"maxAge"`       //分钟, -1 无限制
-	RotationTime int    `json:"rotationTime"` //分钟
+	MaxAge       int    `json:"maxAge"`       //minute, -1 unlimited
+	RotationTime int    `json:"rotationTime"` //minute
 }
 
 type ServerConfig struct {
-	Name          string                `json:"name"`
-	Host          string                `json:"host"`
-	Port          int                   `json:"port"`
-	WebPort       int                   `json:"webPort"`
-	MaxConn       int                   `json:"maxConn"`
-	MaxPacketSize int                   `json:"maxPacketSize"`
-	Log           map[string]*LogConfig `json:"log"`
-	Remotes       []string              `json:"remotes"`
-	HostList      []string              `json:"hostList"`
-	Timeout       int64                 `json:"timeout"`
-	Group         string                `json:"group"`
-	WatchGroup    string                `json:"watchGroup"`
-}
-
-func (sc *ServerConfig) GetDefaultLogConf() *LogConfig {
-	d, ok := sc.Log["default"]
-	if !ok {
-		return nil
-	}
-	return d
+	Name          string   `json:"name"`
+	Host          string   `json:"host"`
+	Port          int      `json:"port"`
+	WebPort       int      `json:"webPort"`
+	MaxConn       int      `json:"maxConn"`
+	MaxPacketSize int      `json:"maxPacketSize"`
+	Remotes       []string `json:"remotes"`
+	HostList      []string `json:"hostList"`
+	Timeout       int64    `json:"timeout"`
+	Group         string   `json:"group"`
+	WatchGroup    string   `json:"watchGroup"`
 }
 
 type DBConfig struct {
@@ -97,14 +102,16 @@ type DBConfig struct {
 
 type ServerCfgMgr struct {
 	mux     sync.RWMutex
-	Servers map[string]*ServerConfig
-	Db      map[string]*DBConfig
+	Servers map[string]*ServerConfig `json:"servers"`
+	Db      map[string]*DBConfig     `json:"db"`
+	Log     map[string]*LogConfig    `json:"log"`
 }
 
 func newServerCfgMgr() *ServerCfgMgr {
 	return &ServerCfgMgr{
 		Servers: make(map[string]*ServerConfig),
 		Db:      make(map[string]*DBConfig),
+		Log:     make(map[string]*LogConfig),
 	}
 }
 
@@ -121,6 +128,17 @@ func (scm *ServerCfgMgr) LoadConf(path string) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func (scm *ServerCfgMgr) GetLogConf(logName string) *LogConfig {
+	scm.mux.RLock()
+	defer scm.mux.RUnlock()
+
+	d, ok := scm.Log[logName]
+	if !ok || d == nil {
+		return nil
+	}
+	return d
 }
 
 func (scm *ServerCfgMgr) GetServer(key string) *ServerConfig {

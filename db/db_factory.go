@@ -9,11 +9,11 @@ import "sync"
 
 var dbFactory = newDBFactory()
 
-func AddDB(dbName string, dbMgr IDBMgr) {
+func AddDB(dbName string, dbMgr *DBMgr) {
 	dbFactory.Add(dbName, dbMgr)
 }
 
-func GetDB(dbName string) IDBMgr {
+func GetDB(dbName string) *DBMgr {
 	return dbFactory.Get(dbName)
 }
 
@@ -31,16 +31,16 @@ func newDBFactory() *DBFactory {
 	}
 }
 
-func (db *DBFactory) Add(dbName string, dbMgr IDBMgr) {
+func (db *DBFactory) Add(dbName string, dbMgr *DBMgr) {
 	db.dbList.Store(dbName, dbMgr)
 }
 
-func (db *DBFactory) Get(dbName string) IDBMgr {
+func (db *DBFactory) Get(dbName string) *DBMgr {
 	idb, ok := db.dbList.Load(dbName)
 	if !ok {
 		return nil
 	}
-	dbMgr, ok := idb.(IDBMgr)
+	dbMgr, ok := idb.(*DBMgr)
 	if !ok {
 		return nil
 	}
@@ -52,7 +52,7 @@ func (db *DBFactory) Del(dbName string) {
 	if !ok {
 		return
 	}
-	dbMgr, ok := idb.(IDBMgr)
+	dbMgr, ok := idb.(*DBMgr)
 	if !ok {
 		return
 	}
@@ -62,7 +62,7 @@ func (db *DBFactory) Del(dbName string) {
 
 func (db *DBFactory) Clean() {
 	db.dbList.Range(func(key, value interface{}) bool {
-		dbMgr, ok := value.(IDBMgr)
+		dbMgr, ok := value.(*DBMgr)
 		if !ok {
 			return true
 		}

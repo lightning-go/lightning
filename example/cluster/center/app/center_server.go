@@ -13,6 +13,7 @@ import (
 	"github.com/lightning-go/lightning/example/cluster/common"
 	"github.com/lightning-go/lightning/example/cluster/center/service"
 	"github.com/lightning-go/lightning/example/cluster/msg"
+	"github.com/lightning-go/lightning/conf"
 )
 
 type CenterServer struct {
@@ -23,6 +24,7 @@ func NewCenterServer(name, confPath string) *CenterServer {
 	cs := &CenterServer{
 		Server: network.NewServer(name, confPath),
 	}
+	cs.initLog()
 	cs.init()
 	return cs
 }
@@ -32,6 +34,13 @@ func (cs *CenterServer) init() {
 	cs.SetAuthorizedCallback(cs.onAuthorized)
 	cs.SetMsgCallback(cs.onMsg)
 	cs.RegisterService(&service.LogicService{})
+}
+
+func (cs *CenterServer) initLog() {
+	logConf := conf.GetLogConf("center")
+	if logConf != nil {
+		logger.InitLog(logConf.LogLevel, logConf.MaxAge, logConf.RotationTime, logConf.LogPath)
+	}
 }
 
 func (cs *CenterServer) onAuthorized(conn defs.IConnection, packet defs.IPacket) bool {

@@ -8,8 +8,8 @@ package db
 import (
 	"testing"
 	"fmt"
-	"github.com/json-iterator/go"
 	"time"
+	"github.com/jinzhu/gorm"
 )
 
 type User struct {
@@ -29,9 +29,16 @@ type Player struct {
 func testSinglePK(rc *RedisClient) {
 	memUser := NewMemMgrEx(rc, true, "test", "user", []string{"id"})
 
+	u := User{}
+	err := memUser.GetData(1, &u)
+	if err == nil {
+		fmt.Println("pk get", u.Id, u.Name, u.Remark, u.Test)
+	}
+
 	id := memUser.GetPKIncr()
-	d := memUser.GetData(id)
-	if d == nil {
+	u = User{}
+	err = memUser.GetData(id, &u)
+	if err == gorm.ErrRecordNotFound {
 		if id > 0 {
 			u := User{
 				Id:     id,
@@ -46,31 +53,20 @@ func testSinglePK(rc *RedisClient) {
 		}
 
 	} else {
-		u := User{}
-		err := jsoniter.Unmarshal(d, &u)
-		if err != nil {
-			fmt.Println("pk get", err)
-		} else {
-			fmt.Println("pk get", u.Id, u.Name, u.Remark, u.Test)
-		}
+		fmt.Println("pk get", u.Id, u.Name, u.Remark, u.Test)
 	}
 
-	d = memUser.GetDataByIK("name", "jason")
-	if d != nil {
-		u := User{}
-		err := jsoniter.Unmarshal(d, &u)
-		if err != nil {
-			fmt.Println("ik get", err)
-		} else {
-			fmt.Println("ik get", u.Id, u.Name, u.Remark, u.Test)
+	u = User{}
+	err = memUser.GetDataByIK("name", "jason", &u)
+	if err == nil {
+		fmt.Println("ik get", u.Id, u.Name, u.Remark, u.Test)
 
-			oldName := u.Name
-			u.Name = "jason22222"
-			ok := memUser.UpdateData(u.Id, &u)
-			if ok {
-				memUser.SetDataIK("name", u.Name, u.Id)
-				memUser.DelDataByIK("name", oldName)
-			}
+		oldName := u.Name
+		u.Name = "jason22222"
+		ok := memUser.UpdateData(u.Id, &u)
+		if ok {
+			memUser.SetDataIK("name", u.Name, u.Id)
+			memUser.DelDataByIK("name", oldName)
 		}
 	}
 
@@ -82,11 +78,12 @@ func testSinglePK(rc *RedisClient) {
 func testMultiPK(rc *RedisClient) {
 	memPlayer := NewMemMgrEx(rc, false, "test", "player", []string{"id", "name"})
 
-	d := memPlayer.GetDataByMultiPK(map[string]interface{}{
+	p := Player{}
+	err := memPlayer.GetDataByMultiPK(map[string]interface{}{
 		"id": 3,
 		"name": "jason",
-	})
-	if d == nil {
+	}, &p)
+	if err == gorm.ErrRecordNotFound {
 		u := Player{
 			Id:   3,
 			Name: "jason",
@@ -99,20 +96,23 @@ func testMultiPK(rc *RedisClient) {
 		}, &u)
 
 	} else {
-		u := Player{}
-		err := jsoniter.Unmarshal(d, &u)
-		if err != nil {
-			fmt.Println("pk get", err)
-		} else {
-			fmt.Println("pk get", u.Id, u.Name, u.Info, u.Test)
+		fmt.Println("pk get", p.Id, p.Name, p.Info, p.Test)
 
-			u.Test = 1231.1
-			u.Info = "test...modify"
-			memPlayer.UpdateDataByMultiPK(map[string]interface{}{
-				"id": u.Id,
-				"name": u.Name,
-			}, &u)
-		}
+		p.Test = 1231.1
+		p.Info = "test...modify"
+		memPlayer.UpdateDataByMultiPK(map[string]interface{}{
+			"id": p.Id,
+			"name": p.Name,
+		}, &p)
+
+	}
+
+	err = memPlayer.GetDataByMultiPK(map[string]interface{}{
+		"id": 3,
+		"name": "jason",
+	}, &p)
+	if err == nil {
+		fmt.Println("pk get", p.Id, p.Name, p.Info, p.Test)
 	}
 
 	time.Sleep(time.Second * 3)
@@ -123,7 +123,7 @@ func testMultiPK(rc *RedisClient) {
 }
 
 func Test1(t *testing.T) {
-	dbMgr := NewMysqlMgr("test", "root", "123456", "127.0.0.1:3306")
+	dbMgr := NewDBMgr(DB_type_mysql, "test", "root", "123456", "127.0.0.1:3306")
 	defer dbMgr.Close()
 
 	rc := NewRedisClient("127.0.0.1:6379", 1, 0)
@@ -135,7 +135,7 @@ func Test1(t *testing.T) {
 }
 
 func Test2(t *testing.T) {
-	dbMgr := NewMysqlMgr("test", "root", "123456", "127.0.0.1:3306")
+	dbMgr := NewDBMgr(DB_type_mysql, "test", "root", "123456", "127.0.0.1:3306")
 	defer dbMgr.Close()
 
 	rc := NewRedisClient("127.0.0.1:6379", 1, 0)

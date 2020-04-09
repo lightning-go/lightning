@@ -16,6 +16,7 @@ import (
 	"github.com/lightning-go/lightning/example/cluster/gate/service"
 	"github.com/lightning-go/lightning/utils"
 	"github.com/lightning-go/lightning/example/cluster/msg"
+	"github.com/lightning-go/lightning/conf"
 )
 
 const (
@@ -34,6 +35,7 @@ func NewGateServer(name, confPath string) *GateServer {
 		Server:        network.NewServer(name, confPath),
 		serveSelector: NewSelector(),
 	}
+	gs.initLog()
 	gs.init()
 	return gs
 }
@@ -52,6 +54,13 @@ func (gs *GateServer) init() {
 			session.Close()
 		}
 	})
+}
+
+func (gs *GateServer) initLog() {
+	logConf := conf.GetLogConf("gate")
+	if logConf != nil {
+		logger.InitLog(logConf.LogLevel, logConf.MaxAge, logConf.RotationTime, logConf.LogPath)
+	}
 }
 
 func (gs *GateServer) onDisConn(conn defs.IConnection) {

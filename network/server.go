@@ -33,11 +33,6 @@ func NewServer(name, confPath string) *Server {
 		return nil
 	}
 
-	logConf := cfg.GetDefaultLogConf()
-	if logConf != nil {
-		logger.InitLog(logConf.LogLevel, logConf.MaxAge, logConf.RotationTime, logConf.LogPath)
-	}
-
 	addr := fmt.Sprintf(":%v", cfg.Port)
 	s := &Server{
 		TcpServer:  NewTcpServer(addr, name, cfg.MaxConn),

@@ -48,7 +48,7 @@ type MemMgr struct {
 	iks       []string
 	isPkIncr  bool
 	log       *logger.Logger
-	dbMgr     IDBMgr
+	dbMgr     *DBMgr
 }
 
 func NewMemMgr(rc *RedisClient, initPK bool, dbName, tableName string, pks []string, iks ...string) *MemMgr {

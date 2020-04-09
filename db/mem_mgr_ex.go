@@ -17,9 +17,11 @@ import (
 	"github.com/lightning-go/lightning/utils"
 	"sync/atomic"
 	"runtime/debug"
+	"github.com/jinzhu/gorm"
 )
 
 var ConvertTypeError = errors.New("convert type error")
+
 
 var defaultMemModeExPool = sync.Pool{
 	New: func() interface{} {
@@ -55,7 +57,7 @@ type MemMgrEx struct {
 	pks          []string
 	isPkIncr     bool
 	log          *logger.Logger
-	dbMgr        IDBMgr
+	dbMgr        *DBMgr
 	queue        *utils.SafeQueue
 	queueWorking int32
 	queueWait    sync.WaitGroup
@@ -363,7 +365,7 @@ func (mm *MemMgrEx) SetDataIK(ikName string, ikValue, pkValue interface{}) {
 	mm.HSetIK(ikName, ikVal, value)
 }
 
-func (mm *MemMgrEx) setData(state int, key interface{}, d interface{}) bool {
+func (mm *MemMgrEx) setData(state int, key interface{}, d interface{}, saveDB bool) bool {
 	if d == nil {
 		return false
 	}
@@ -379,7 +381,9 @@ func (mm *MemMgrEx) setData(state int, key interface{}, d interface{}) bool {
 		return false
 	}
 
-	mm.putQueue(state, d)
+	if saveDB {
+		mm.putQueue(state, d)
+	}
 
 	err = mm.HSet(k, v)
 	if err != nil {
@@ -391,7 +395,7 @@ func (mm *MemMgrEx) setData(state int, key interface{}, d interface{}) bool {
 }
 
 func (mm *MemMgrEx) AddData(key interface{}, d interface{}) bool {
-	return mm.setData(MEM_STATE_NEW, key, d)
+	return mm.setData(MEM_STATE_NEW, key, d, true)
 }
 
 func (mm *MemMgrEx) AddDataByMultiPK(keyValMap map[string]interface{}, d interface{}) bool {
@@ -403,7 +407,7 @@ func (mm *MemMgrEx) AddDataByMultiPK(keyValMap map[string]interface{}, d interfa
 }
 
 func (mm *MemMgrEx) UpdateData(key interface{}, d interface{}) bool {
-	return mm.setData(MEM_STATE_UPDATE, key, d)
+	return mm.setData(MEM_STATE_UPDATE, key, d, true)
 }
 
 func (mm *MemMgrEx) UpdateDataByMultiPK(keyValMap map[string]interface{}, d interface{}) bool {
@@ -414,14 +418,14 @@ func (mm *MemMgrEx) UpdateDataByMultiPK(keyValMap map[string]interface{}, d inte
 	return mm.UpdateData(keys, d)
 }
 
-func (mm *MemMgrEx) getData(key string) []byte {
+func (mm *MemMgrEx) getData(key string) ([]byte, error) {
 	v, err := mm.HGet(key)
 	if err != nil {
 		mm.log.Error(err)
-		return nil
+		return nil, err
 	}
 	if v == nil {
-		return nil
+		return nil, gorm.ErrRecordNotFound
 	}
 
 	d, ok := v.([]byte)
@@ -430,42 +434,96 @@ func (mm *MemMgrEx) getData(key string) []byte {
 			"key":   key,
 			"value": v,
 		})
-		return nil
+		return nil, ConvertTypeError
 	}
 
-	return d
+	return d, nil
 }
 
-func (mm *MemMgrEx) GetData(key interface{}) []byte {
+func (mm *MemMgrEx) GetData(key interface{}, dest interface{}, checkDB ...bool) error {
 	k, err := mm.convertKey(key)
 	if err != nil {
 		mm.log.Error(err)
 		return nil
 	}
-	return mm.getData(k)
+
+	d, err := mm.getData(k)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			fromDB := true
+			if len(checkDB) > 0 {
+				fromDB = checkDB[0]
+			}
+			if fromDB {
+				cond := mm.GetCond(mm.pk, key)
+				err = mm.dbMgr.QueryRecord(mm.tableName, cond, dest)
+				if err != nil {
+					mm.log.Error(err)
+					return err
+				}
+				mm.setData(MEM_STATE_ORI, k, dest, false)
+			}
+		}
+		mm.log.Error(err)
+		return err
+	}
+
+	err = jsoniter.Unmarshal(d, dest)
+	if err != nil {
+		mm.log.Error(err)
+		return err
+	}
+	return nil
 }
 
-func (mm *MemMgrEx) GetDataByMultiPK(keyValMap map[string]interface{}) []byte {
-	keys, _ := mm.GetMultiPKValue(keyValMap)
+func (mm *MemMgrEx) GetDataByMultiPK(keyValMap map[string]interface{}, dest interface{}, checkDB ...bool) error {
+	keys, cond := mm.GetMultiPKValue(keyValMap)
 	if len(keys) == 0 {
 		return nil
 	}
-	return mm.GetData(keys)
+
+	d, err := mm.getData(keys)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			fromDB := true
+			if len(checkDB) > 0 {
+				fromDB = checkDB[0]
+			}
+			if fromDB {
+				err = mm.dbMgr.QueryRecord(mm.tableName, cond, dest)
+				if err != nil {
+					mm.log.Error(err)
+					return err
+				}
+				mm.setData(MEM_STATE_ORI, keys, dest, false)
+			}
+		}
+		mm.log.Error(err)
+		return err
+	}
+
+	err = jsoniter.Unmarshal(d, dest)
+	if err != nil {
+		mm.log.Error(err)
+		return err
+	}
+
+	return nil
 }
 
-func (mm *MemMgrEx) GetDataByIK(ikName string, ikValue interface{}) []byte {
+func (mm *MemMgrEx) GetDataByIK(ikName string, ikValue, dest interface{}) error {
 	ikVal, err := mm.convertKey(ikValue)
 	if err != nil {
 		mm.log.Error(err)
-		return nil
+		return err
 	}
 	d, err := mm.HGetIK(ikName, ikVal)
 	if err != nil {
 		mm.log.Error(err)
-		return nil
+		return err
 	}
 	if d == nil {
-		return nil
+		return gorm.ErrRecordNotFound
 	}
 
 	v, ok := d.([]byte)
@@ -475,18 +533,18 @@ func (mm *MemMgrEx) GetDataByIK(ikName string, ikValue interface{}) []byte {
 			"ikVal":  ikVal,
 			"value":  d,
 		})
-		return nil
+		return ConvertTypeError
 	}
 
 	pk, err := mm.convertKey(v)
 	if err != nil {
 		mm.log.Error(err)
-		return nil
+		return err
 	}
 	d, err = mm.HGet(pk, false)
 	if err != nil {
 		mm.log.Error(err)
-		return nil
+		return err
 	}
 	v, ok = d.([]byte)
 	if !ok {
@@ -494,10 +552,16 @@ func (mm *MemMgrEx) GetDataByIK(ikName string, ikValue interface{}) []byte {
 			"key":   pk,
 			"value": v,
 		})
-		return nil
+		return ConvertTypeError
 	}
 
-	return v
+	err = jsoniter.Unmarshal(v, dest)
+	if err != nil {
+		mm.log.Error(err)
+		return err
+	}
+
+	return nil
 }
 
 func (mm *MemMgrEx) DelData(key interface{}) bool {

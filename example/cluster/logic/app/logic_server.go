@@ -16,6 +16,7 @@ import (
 	"github.com/lightning-go/lightning/example/cluster/logic/service"
 	"github.com/lightning-go/lightning/example/cluster/common"
 	"github.com/lightning-go/lightning/utils"
+	"github.com/lightning-go/lightning/conf"
 )
 
 type LogicServer struct {
@@ -29,6 +30,7 @@ func NewLogicServer(name, confPath string) *LogicServer {
 		Server:        network.NewServer(name, confPath),
 		centerService: utils.NewServiceFactory(),
 	}
+	gs.initLog()
 	gs.init()
 	gs.initRemoteCenter()
 	return gs
@@ -42,6 +44,13 @@ func (ls *LogicServer) init() {
 	ls.RegisterService(service.NewLogicService(ls))
 	ls.centerService.Register(&service.CenterService{})
 	ls.registerEtcd()
+}
+
+func (ls *LogicServer) initLog() {
+	logConf := conf.GetLogConf("logic")
+	if logConf != nil {
+		logger.InitLog(logConf.LogLevel, logConf.MaxAge, logConf.RotationTime, logConf.LogPath)
+	}
 }
 
 func (ls *LogicServer) onDisConn(conn defs.IConnection) {
