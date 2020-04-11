@@ -112,6 +112,14 @@ func NewMemMgrEx(rc *RedisClient, initPK bool, dbName, tableName string, pks []s
 	return mm
 }
 
+func (mm *MemMgrEx) GetTableName() string {
+	return mm.tableName
+}
+
+func (mm *MemMgrEx) GetDBMgr() *DBMgr {
+	return mm.dbMgr
+}
+
 func (mm *MemMgrEx) initPKValue() {
 	pkValue := mm.dbMgr.QueryPrimaryKey(mm.pk, mm.tableName)
 	if pkValue == -1 {
