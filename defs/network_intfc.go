@@ -102,7 +102,7 @@ type ISession interface {
 	WritePacket(IPacket)
 	WriteData([]byte)
 	WriteDataById(string, []byte)
-	OnService(packet IPacket) bool
+	OnService(ISession, IPacket) bool
 	SetContext(key, value interface{})
 	GetContext(key interface{}) interface{}
 	SetPacket(IPacket)

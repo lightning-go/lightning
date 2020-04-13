@@ -47,7 +47,7 @@ func (ls *LogicServer) keepOnline() {
 
 	go func() {
 		for {
-			weight := int(ls.GetSessionCount())
+			weight := int(ls.GetClientCount())
 			sd := &selector.SessionData{
 				Host:   host,
 				Name:   name,

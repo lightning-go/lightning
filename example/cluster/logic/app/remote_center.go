@@ -10,7 +10,6 @@ import (
 	"github.com/lightning-go/lightning/defs"
 	"github.com/lightning-go/lightning/logger"
 	"github.com/lightning-go/lightning/utils"
-	"github.com/lightning-go/lightning/network"
 	"github.com/lightning-go/lightning/example/cluster/common"
 	"github.com/lightning-go/lightning/example/cluster/msg"
 )
@@ -70,7 +69,7 @@ func (ls *LogicServer) onRemoteNewConn(conn defs.IConnection) {
 	conn.WriteData(data)
 
 	sessionData := make([]*msg.SessionData, 0)
-	ls.RangeSession(func(sessionId string, s *network.Session) {
+	ls.RangeClient(func(sessionId string, s defs.ISession) {
 		session := &msg.SessionData{
 			SessionId: sessionId,
 		}
@@ -93,10 +92,10 @@ func (ls *LogicServer) onRemoteDisconn(conn defs.IConnection) {
 func (ls *LogicServer) onRemoteMsg(conn defs.IConnection, packet defs.IPacket) {
 	logger.Tracef("onRemoteMsg: %v - %v - %v", packet.GetSessionId(), packet.GetId(), string(packet.GetData()))
 
-	session := ls.GetSession(packet.GetSessionId())
-	if session == nil {
+	client := ls.GetClient(packet.GetSessionId())
+	if client == nil {
 		return
 	}
-	ls.centerService.OnServiceHandle(session, packet)
+	ls.centerService.OnServiceHandle(client, packet)
 }
 

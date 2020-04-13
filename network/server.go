@@ -20,7 +20,6 @@ type Server struct {
 	cfg             *conf.ServerConfig
 	service         *utils.ServiceFactory
 	connMgr         *SessionMgr
-	sessionMgr      *SessionMgr
 	newConnCallback defs.ConnCallback
 	disConnCallback defs.ConnCallback
 }
@@ -35,12 +34,11 @@ func NewServer(name, confPath string) *Server {
 
 	addr := fmt.Sprintf(":%v", cfg.Port)
 	s := &Server{
-		TcpServer:  NewTcpServer(addr, name, cfg.MaxConn),
-		remotes:    &sync.Map{},
-		cfg:        cfg,
-		service:    utils.NewServiceFactory(),
-		connMgr:    NewSessionMgr(),
-		sessionMgr: NewSessionMgr(),
+		TcpServer: NewTcpServer(addr, name, cfg.MaxConn),
+		remotes:   &sync.Map{},
+		cfg:       cfg,
+		service:   utils.NewServiceFactory(),
+		connMgr:   NewSessionMgr(),
 	}
 	s.init()
 
@@ -151,51 +149,12 @@ func (s *Server) OnDisConn(conn defs.IConnection) {
 	}
 	connId := conn.GetId()
 	s.connMgr.DelSession(connId)
-	s.sessionMgr.DelConnSession(connId)
 }
 
-func (s *Server) GetConn(connId string) *Session {
+func (s *Server) GetConn(connId string) defs.ISession {
 	return s.connMgr.GetSession(connId)
 }
 
-func (s *Server) RangeConn(f func(string, *Session)) {
+func (s *Server) RangeConn(f func(string, defs.ISession)) {
 	s.connMgr.RangeSession(f)
-}
-
-func (s *Server) GetSession(sessionId string) *Session {
-	return s.sessionMgr.GetSession(sessionId)
-}
-
-func (s *Server) DelSession(sessionId string) {
-	s.sessionMgr.DelSession(sessionId)
-}
-
-func (s *Server) RangeSession(f func(string, *Session)) {
-	s.sessionMgr.RangeSession(f)
-}
-
-func (s *Server) GetSessionCount() int64 {
-	return s.sessionMgr.SessionCount()
-}
-
-func (s *Server) CheckAddSession(conn defs.IConnection, sessionId string, async ...bool) *Session {
-	session := s.sessionMgr.GetSession(sessionId)
-	if session == nil {
-		session = NewSession(conn, sessionId, s, async...)
-		if session == nil {
-			return nil
-		}
-		s.sessionMgr.AddSession(session)
-	}
-	return session
-}
-
-func (s *Server) OnSessionService(conn defs.IConnection, packet defs.IPacket) {
-	sessionId := packet.GetSessionId()
-	session := s.CheckAddSession(conn, sessionId, true)
-	if session == nil {
-		logger.Errorf("session nil %v", sessionId)
-		return
-	}
-	session.OnService(packet)
 }
