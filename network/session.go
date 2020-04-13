@@ -152,6 +152,7 @@ func (s *Session) enableReadQueue() {
 				continue
 			}
 			s.serve.OnServiceHandle(d.session, d.packet)
+			freeSessionQueueData(d)
 		}
 		logger.Tracef("session closed %v", s.id)
 	}()
