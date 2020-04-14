@@ -17,7 +17,7 @@ import (
 	"github.com/lightning-go/lightning/example/cluster/common"
 	"github.com/lightning-go/lightning/utils"
 	"github.com/lightning-go/lightning/conf"
-	"github.com/lightning-go/lightning/example/cluster/data"
+	"github.com/lightning-go/lightning/example/cluster/core"
 )
 
 type LogicServer struct {
@@ -116,7 +116,7 @@ func (ls *LogicServer) GetClientCount() int64 {
 func (ls *LogicServer) CheckAddClient(conn defs.IConnection, sessionId string, async ...bool) defs.ISession {
 	client := ls.clientMgr.GetSession(sessionId)
 	if client == nil {
-		client = data.NewClient(conn, sessionId, ls, async...)
+		client = core.NewClient(conn, sessionId, ls, async...)
 		if client == nil {
 			return nil
 		}

@@ -7,13 +7,13 @@ package service
 
 import (
 	"github.com/lightning-go/lightning/example/cluster/msg"
-	"github.com/lightning-go/lightning/example/cluster/data"
+	"github.com/lightning-go/lightning/example/cluster/core"
 )
 
 type LogicService struct {}
 
 
-func (ls *LogicService) Test3(client *data.Client, req *msg.MsgTestCenterReq, ack *msg.MsgTestCenterAck) int {
+func (ls *LogicService) Test3(client *core.Client, req *msg.MsgTestCenterReq, ack *msg.MsgTestCenterAck) int {
 	ack.Result = req.N * 2000
 	return msg.RESULT_OK
 }

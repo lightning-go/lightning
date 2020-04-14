@@ -14,7 +14,7 @@ import (
 	"github.com/lightning-go/lightning/example/cluster/center/service"
 	"github.com/lightning-go/lightning/example/cluster/msg"
 	"github.com/lightning-go/lightning/conf"
-	"github.com/lightning-go/lightning/example/cluster/data"
+	"github.com/lightning-go/lightning/example/cluster/core"
 )
 
 type CenterServer struct {
@@ -128,7 +128,7 @@ func (cs *CenterServer) GetClientCount() int64 {
 func (cs *CenterServer) CheckAddClient(conn defs.IConnection, sessionId string, async ...bool) defs.ISession {
 	client := cs.clientMgr.GetSession(sessionId)
 	if client == nil {
-		client = data.NewClient(conn, sessionId, cs, async...)
+		client = core.NewClient(conn, sessionId, cs, async...)
 		if client == nil {
 			return nil
 		}

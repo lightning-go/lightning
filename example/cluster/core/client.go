@@ -3,7 +3,7 @@
  * @author: Jason
  */
 
-package data
+package core
 
 import (
 	"github.com/lightning-go/lightning/network"
