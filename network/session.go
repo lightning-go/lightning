@@ -163,7 +163,8 @@ func (s *Session) OnService(session defs.ISession, packet defs.IPacket) bool {
 		logger.Warn("server is nil")
 		return false
 	}
-	if packet == nil {
+	if session == nil || packet == nil {
+		logger.Warn("session or packet is nil")
 		return false
 	}
 	if s.isAsync {

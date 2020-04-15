@@ -16,6 +16,10 @@ import (
 	"strings"
 )
 
+func (gs *GateServer) initEtcd() {
+	gs.watch()
+}
+
 func (gs *GateServer) watch() bool {
 	etcdCfg := conf.GetServer("etcd")
 	if etcdCfg == nil {

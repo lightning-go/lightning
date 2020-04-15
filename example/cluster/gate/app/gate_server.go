@@ -41,11 +41,13 @@ func NewGateServer(name, confPath string) *GateServer {
 }
 
 func (gs *GateServer) init() {
+	gs.initLog()
+
 	gs.SetCodec(&module.HeadCodec{})
 	gs.SetMsgCallback(gs.onMsg)
 	gs.SetDisConnCallback(gs.onDisConn)
 
-	gs.watch()
+	gs.initEtcd()
 	gs.RegisterService(&service.GateService{})
 
 	gs.serveSelector.SetCleanSessionCallback(func(sessionId string) {

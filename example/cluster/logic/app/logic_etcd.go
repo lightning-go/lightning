@@ -14,7 +14,12 @@ import (
 	"github.com/lightning-go/lightning/example/cluster/common"
 	"github.com/lightning-go/lightning/selector"
 	"github.com/lightning-go/lightning/utils"
+	"github.com/lightning-go/lightning/example/cluster/core"
 )
+
+func (ls *LogicServer) initEtcd() {
+	ls.registerEtcd()
+}
 
 func (ls *LogicServer) registerEtcd() bool {
 	etcdCfg := conf.GetServer("etcd")
@@ -47,7 +52,7 @@ func (ls *LogicServer) keepOnline() {
 
 	go func() {
 		for {
-			weight := int(ls.GetClientCount())
+			weight := int(core.GetClientCount())
 			sd := &selector.SessionData{
 				Host:   host,
 				Name:   name,

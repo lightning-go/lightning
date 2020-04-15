@@ -19,24 +19,24 @@ import (
 
 type CenterServer struct {
 	*network.Server
-	clientMgr *network.SessionMgr
 }
 
 func NewCenterServer(name, confPath string) *CenterServer {
 	cs := &CenterServer{
 		Server:    network.NewServer(name, confPath),
-		clientMgr: network.NewSessionMgr(),
 	}
-	cs.initLog()
 	cs.init()
 	return cs
 }
 
 func (cs *CenterServer) init() {
+	cs.initLog()
+
 	cs.SetCodec(&module.HeadCodec{})
 	cs.SetAuthorizedCallback(cs.onAuthorized)
 	cs.SetMsgCallback(cs.onMsg)
 	cs.SetDisConnCallback(cs.onDisConn)
+
 	cs.RegisterService(&service.LogicService{})
 }
 
@@ -48,7 +48,7 @@ func (cs *CenterServer) initLog() {
 }
 
 func (cs *CenterServer) onDisConn(conn defs.IConnection) {
-	cs.clientMgr.DelConnSession(conn.GetId())
+	core.DelClientByConnId(conn.GetId())
 }
 
 func (cs *CenterServer) onAuthorized(conn defs.IConnection, packet defs.IPacket) bool {
@@ -81,7 +81,7 @@ func (cs *CenterServer) checkMsgStatus(conn defs.IConnection, packet defs.IPacke
 
 	switch status {
 	case msg.RESULT_DISCONN:
-		cs.DelClient(sessionId)
+		core.DelClient(sessionId)
 	case msg.RESULT_SYNC_SESSION:
 		cs.syncSessionData(conn, packet)
 	default:
@@ -105,41 +105,13 @@ func (cs *CenterServer) syncSessionData(conn defs.IConnection, packet defs.IPack
 		if s == nil {
 			continue
 		}
-		cs.CheckAddClient(conn, s.SessionId, true)
+		core.CheckAddClient(conn, s.SessionId, cs, true)
 	}
-}
-
-func (cs *CenterServer) GetClient(sessionId string) defs.ISession {
-	return cs.clientMgr.GetSession(sessionId)
-}
-
-func (cs *CenterServer) DelClient(sessionId string) {
-	cs.clientMgr.DelSession(sessionId)
-}
-
-func (cs *CenterServer) RangeClient(f func(string, defs.ISession)) {
-	cs.clientMgr.RangeSession(f)
-}
-
-func (cs *CenterServer) GetClientCount() int64 {
-	return cs.clientMgr.SessionCount()
-}
-
-func (cs *CenterServer) CheckAddClient(conn defs.IConnection, sessionId string, async ...bool) defs.ISession {
-	client := cs.clientMgr.GetSession(sessionId)
-	if client == nil {
-		client = core.NewClient(conn, sessionId, cs, async...)
-		if client == nil {
-			return nil
-		}
-		cs.clientMgr.AddSession(client)
-	}
-	return client
 }
 
 func (cs *CenterServer) OnClientService(conn defs.IConnection, packet defs.IPacket) {
 	sessionId := packet.GetSessionId()
-	client := cs.CheckAddClient(conn, sessionId, true)
+	client := core.CheckAddClient(conn, sessionId, cs, true)
 	if client == nil {
 		logger.Errorf("session nil %v", sessionId)
 		return
