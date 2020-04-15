@@ -14,8 +14,6 @@ import (
 	"database/sql"
 )
 
-const dbLogPath = "./logs/db.log"
-
 const (
 	DB_type_mysql    = "mysql"
 	DB_type_postgres = "postgres"
@@ -42,11 +40,9 @@ func NewDBMgr(dbType, dbName, user, pwd, host string) *DBMgr {
 		pwd:    pwd,
 		log:    logger.NewLogger(logger.TRACE),
 	}
-
 	if dbMgr.log == nil {
 		return nil
 	}
-	dbMgr.log.SetRotation(time.Hour*24*30, time.Hour*24, dbLogPath)
 
 	sqlConn := ""
 	switch dbType {
@@ -71,6 +67,17 @@ func NewDBMgr(dbType, dbName, user, pwd, host string) *DBMgr {
 
 	dbMgr.log.Info("database is connected", logger.Fields{"db": dbName})
 	return dbMgr
+}
+
+func (dbMgr *DBMgr) SetLogLevel(lvKey string) {
+	dbMgr.log.SetLevel(logger.GetLevel(lvKey))
+}
+
+func (dbMgr *DBMgr) SetLogRotation(maxAge, rotationTime int, pathFile string) {
+	if dbMgr.log == nil {
+		dbMgr.log = logger.NewLogger(logger.TRACE)
+	}
+	dbMgr.log.SetRotation(time.Minute*time.Duration(maxAge), time.Minute*time.Duration(rotationTime), pathFile)
 }
 
 func (dbMgr *DBMgr) getMySQLConn() string {

@@ -21,8 +21,18 @@ func init() {
 }
 
 func InitLog(level string, maxAge, rotationTime int, pathFile string) {
-	lv := TRACE
-	switch level {
+	lv := GetLevel(level)
+	if defaultLogger == nil {
+		defaultLogger = NewLogger(lv)
+	}
+	defaultLogger.SetLevel(lv)
+
+	defaultLogger.SetRotation(time.Minute*time.Duration(maxAge),
+		time.Minute*time.Duration(rotationTime), pathFile)
+}
+
+func GetLevel(lvKey string) (lv int) {
+	switch lvKey {
 	case "panic":
 		lv = PANIC
 	case "fatal":
@@ -37,16 +47,10 @@ func InitLog(level string, maxAge, rotationTime int, pathFile string) {
 		lv = DEBUG
 	case "trace":
 		lv = TRACE
+	default:
+		lv = TRACE
 	}
-
-	if defaultLogger == nil {
-		defaultLogger = NewLogger(lv)
-	} else {
-		defaultLogger.SetLevel(lv)
-	}
-
-	defaultLogger.SetRotation(time.Minute*time.Duration(maxAge),
-		time.Minute*time.Duration(rotationTime), pathFile)
+	return
 }
 
 func SetLevel(level int) {
