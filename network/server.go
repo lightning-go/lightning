@@ -25,7 +25,9 @@ type Server struct {
 }
 
 func NewServer(name, confPath string) *Server {
-	conf.InitCfg(confPath)
+	if len(confPath) > 0 {
+		conf.InitCfg(confPath)
+	}
 	cfg := conf.GetServer(name)
 	if cfg == nil {
 		panic(fmt.Sprintf("%v config load failed", name))

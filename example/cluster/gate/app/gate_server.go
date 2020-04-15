@@ -35,7 +35,6 @@ func NewGateServer(name, confPath string) *GateServer {
 		Server:        network.NewServer(name, confPath),
 		serveSelector: NewSelector(),
 	}
-	gs.initLog()
 	gs.init()
 	return gs
 }
