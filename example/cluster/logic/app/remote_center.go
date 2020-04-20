@@ -70,11 +70,12 @@ func (ls *LogicServer) onCenterNewConn(conn defs.IConnection) {
 	conn.WriteData(data)
 
 	sessionData := make([]*msg.SessionData, 0)
-	core.RangeClient(func(sessionId string, s defs.ISession) {
+	core.RangeClient(func(sessionId string, s defs.ISession) bool {
 		session := &msg.SessionData{
 			SessionId: sessionId,
 		}
 		sessionData = append(sessionData, session)
+		return true
 	})
 	if len(sessionData) > 0 {
 		data = common.MarshalDataEx(sessionData)

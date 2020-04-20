@@ -22,3 +22,8 @@ func (gs *GateService) Ping(session defs.ISession, req *msg.MsgPingReq, ack *msg
 	ack.Offset = offset
 	return msg.RESULT_OK
 }
+
+func (gs *GateService) TestNil(session defs.ISession, req *msg.MsgTestNilReq, ack *msg.MsgTestNilAck) int {
+	ack.Res = "hello nil"
+	return msg.RESULT_OK
+}

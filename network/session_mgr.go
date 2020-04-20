@@ -61,7 +61,7 @@ func DelSession(sessionId string) {
 	defaultSessionMgr.DelSession(sessionId)
 }
 
-func RangeSession(f func(sId string, s defs.ISession)) {
+func RangeSession(f func(sId string, s defs.ISession) bool) {
 	defaultSessionMgr.RangeSession(f)
 }
 
@@ -166,7 +166,7 @@ func (sm *SessionMgr) DelConnSession(connId string) {
 	sm.connDict.Del(connId)
 }
 
-func (sm *SessionMgr) RangeSession(f func(string, defs.ISession)) {
+func (sm *SessionMgr) RangeSession(f func(string, defs.ISession) bool) {
 	if f == nil {
 		return
 	}
@@ -175,7 +175,6 @@ func (sm *SessionMgr) RangeSession(f func(string, defs.ISession)) {
 		if !ok {
 			return true
 		}
-		f(session.GetSessionId(), session)
-		return true
+		return f(session.GetSessionId(), session)
 	})
 }

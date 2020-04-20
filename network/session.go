@@ -126,6 +126,18 @@ func (s *Session) WriteDataById(id string, data []byte) {
 	s.conn.WriteDataById(id, data)
 }
 
+func (s *Session) WritePacketAwait(packet defs.IPacket) (defs.IPacket, error) {
+	return s.conn.WritePacketAwait(packet)
+}
+
+func (s *Session) WriteDataAwait(data []byte) (defs.IPacket, error) {
+	return s.conn.WriteDataAwait(data)
+}
+
+func (s *Session) WriteDataByIdAwait(id string, data []byte) (defs.IPacket, error) {
+	return s.conn.WriteDataByIdAwait(id, data)
+}
+
 func (s *Session) enableReadQueue() {
 	if s.serve == nil {
 		logger.Warn("server is nil")

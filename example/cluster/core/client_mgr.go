@@ -24,7 +24,7 @@ func DelClientByConnId(connId string) {
 	defaultClientMgr.DelConnSession(connId)
 }
 
-func RangeClient(f func(string, defs.ISession)) {
+func RangeClient(f func(string, defs.ISession) bool) {
 	defaultClientMgr.RangeSession(f)
 }
 

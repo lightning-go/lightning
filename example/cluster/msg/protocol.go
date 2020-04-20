@@ -48,3 +48,10 @@ type MsgTestCenterReq struct {
 type MsgTestCenterAck struct {
 	Result int64 `json:"result"`
 }
+
+type MsgTestNilReq struct {
+}
+
+type MsgTestNilAck struct {
+	Res string `json:"res"`
+}

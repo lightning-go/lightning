@@ -102,15 +102,18 @@ func (sf *ServiceFactory) OnServiceHandle(session defs.ISession, packet defs.IPa
 	}
 	req := reflect.New(typ.ArgType.Elem())
 
-	if sf.ParseDataCallback == nil {
-		if !ParseDataByJson(packet.GetData(), req.Interface()) {
-			logger.Trace("parse request data failed")
-			return false
-		}
-	} else {
-		if !sf.ParseDataCallback(packet.GetData(), req.Interface()) {
-			logger.Trace("parse request data failed")
-			return false
+	data := packet.GetData()
+	if data != nil && len(data) > 0 {
+		if sf.ParseDataCallback == nil {
+			if !ParseDataByJson(data, req.Interface()) {
+				logger.Trace("parse request data failed")
+				return false
+			}
+		} else {
+			if !sf.ParseDataCallback(data, req.Interface()) {
+				logger.Trace("parse request data failed")
+				return false
+			}
 		}
 	}
 

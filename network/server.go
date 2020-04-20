@@ -157,6 +157,6 @@ func (s *Server) GetConn(connId string) defs.ISession {
 	return s.connMgr.GetSession(connId)
 }
 
-func (s *Server) RangeConn(f func(string, defs.ISession)) {
+func (s *Server) RangeConn(f func(string, defs.ISession) bool) {
 	s.connMgr.RangeSession(f)
 }

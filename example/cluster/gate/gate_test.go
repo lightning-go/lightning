@@ -71,6 +71,10 @@ func TestGame(t *testing.T)  {
 	p3.SetData(d)
 	client.SendPacket(p3)
 
+	p4 := &defs.Packet{}
+	p4.SetId("TestNil")
+	client.SendPacket(p4)
+
 
 	time.Sleep(time.Second * 10)
 }
