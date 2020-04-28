@@ -45,6 +45,7 @@ type Session struct {
 	queue        chan *queueData
 	queueWorking int32
 	queueWait    sync.WaitGroup
+	closed       int32
 }
 
 func NewSession(conn defs.IConnection, sessionId string, serve defs.ServeObj, async ...bool) *Session {
@@ -63,8 +64,14 @@ func NewSession(conn defs.IConnection, sessionId string, serve defs.ServeObj, as
 		serve:        serve,
 		queueWorking: 0,
 	}
+	atomic.StoreInt32(&s.closed, 0)
 
 	return s
+}
+
+func (s *Session) isSessionClosed() bool {
+	v := atomic.LoadInt32(&s.closed)
+	return v > 0
 }
 
 func (s *Session) GetPacket() defs.IPacket {
@@ -88,6 +95,7 @@ func (s *Session) CloseSession() bool {
 	if s.queue != nil {
 		close(s.queue)
 	}
+	atomic.StoreInt32(&s.closed, 1)
 	return true
 }
 
@@ -160,6 +168,9 @@ func (s *Session) enableReadQueue() {
 		}()
 
 		for d := range s.queue {
+			if s.isSessionClosed() {
+				break
+			}
 			if d == nil {
 				continue
 			}
@@ -171,6 +182,9 @@ func (s *Session) enableReadQueue() {
 }
 
 func (s *Session) OnService(session defs.ISession, packet defs.IPacket) bool {
+	if s.isSessionClosed() {
+		return false
+	}
 	if s.serve == nil {
 		logger.Warn("server is nil")
 		return false
