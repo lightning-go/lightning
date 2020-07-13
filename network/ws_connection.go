@@ -6,14 +6,15 @@
 package network
 
 import (
+	"context"
+	"sync/atomic"
+
 	"github.com/gorilla/websocket"
 	"github.com/lightning-go/lightning/defs"
-	"context"
-	"github.com/satori/go.uuid"
 	"github.com/lightning-go/lightning/logger"
-	"github.com/lightning-go/lightning/utils"
-	"sync/atomic"
 	"github.com/lightning-go/lightning/module"
+	"github.com/lightning-go/lightning/utils"
+	uuid "github.com/satori/go.uuid"
 )
 
 type WSConnection struct {
@@ -33,11 +34,11 @@ type WSConnection struct {
 }
 
 func NewWSConnection(conn *websocket.Conn) *WSConnection {
-	id, err := uuid.NewV4()
-	if err != nil {
-		logger.Error(err)
-		return nil
-	}
+	id := uuid.NewV4()
+	// if err != nil {
+	// 	logger.Error(err)
+	// 	return nil
+	// }
 
 	wsc := &WSConnection{
 		connId:       id.String(),
