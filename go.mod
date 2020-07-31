@@ -16,6 +16,7 @@ require (
 	github.com/satori/go.uuid v1.2.0
 	github.com/sirupsen/logrus v1.6.0 // indirect
 	golang.org/x/tools/gopls v0.4.3 // indirect
+    google.golang.org/grpc v1.26.0
 )
 
 replace github.com/lightning-go/lightning => ../lightning
