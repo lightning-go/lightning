@@ -29,6 +29,10 @@ func NewWeightSelector() *WeightSelector {
 	}
 }
 
+func (selector *WeightSelector) GetSessions() []*SessionData {
+	return selector.sessions
+}
+
 func (selector *WeightSelector) IsNew(data *SessionData) (new bool, changed bool) {
 	if data == nil {
 		return false, false

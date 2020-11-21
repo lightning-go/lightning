@@ -6,12 +6,13 @@
 package network
 
 import (
-	"github.com/lightning-go/lightning/conf"
-	"github.com/lightning-go/lightning/logger"
-	"github.com/lightning-go/lightning/utils"
-	"github.com/lightning-go/lightning/defs"
 	"fmt"
 	"sync"
+
+	"github.com/lightning-go/lightning/conf"
+	"github.com/lightning-go/lightning/defs"
+	"github.com/lightning-go/lightning/logger"
+	"github.com/lightning-go/lightning/utils"
 )
 
 type Server struct {
@@ -31,7 +32,6 @@ func NewServer(name, confPath string) *Server {
 	cfg := conf.GetServer(name)
 	if cfg == nil {
 		panic(fmt.Sprintf("%v config load failed", name))
-		return nil
 	}
 
 	addr := fmt.Sprintf(":%v", cfg.Port)
@@ -138,7 +138,7 @@ func (s *Server) onConn(conn defs.IConnection) {
 }
 
 func (s *Server) OnNewConn(conn defs.IConnection) {
-	session := NewSession(conn, conn.GetId(), s, false)
+	session := NewSession(conn, conn.GetId(), s, true)
 	s.connMgr.AddSession(session)
 	if s.newConnCallback != nil {
 		s.newConnCallback(conn)
@@ -159,4 +159,8 @@ func (s *Server) GetConn(connId string) defs.ISession {
 
 func (s *Server) RangeConn(f func(string, defs.ISession) bool) {
 	s.connMgr.RangeSession(f)
+}
+
+func (s *Server) GetConnNum() int64 {
+	return s.connMgr.SessionCount()
 }

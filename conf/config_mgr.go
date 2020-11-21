@@ -55,6 +55,20 @@ func GetDB(srvName string) *DBConfig {
 	return defaultServerCfgMgr.GetDB(srvName)
 }
 
+func GetServerName() string {
+	if defaultServerCfgMgr == nil {
+		return ""
+	}
+	return defaultServerCfgMgr.GetServerName()
+}
+
+func GetServerId() string {
+	if defaultServerCfgMgr == nil {
+		return ""
+	}
+	return defaultServerCfgMgr.GetServerId()
+}
+
 func LoadFile(path string) ([]byte, error) {
 	return ioutil.ReadFile(path)
 }
@@ -88,7 +102,7 @@ type ServerConfig struct {
 	HostList      []string `json:"hostList"`
 	Timeout       int64    `json:"timeout"`
 	Group         string   `json:"group"`
-	WatchGroup    string   `json:"watchGroup"`
+	WatchGroups   []string `json:"watchGroups"`
 }
 
 type DBConfig struct {
@@ -102,6 +116,8 @@ type DBConfig struct {
 
 type ServerCfgMgr struct {
 	mux     sync.RWMutex
+	ServerId 	string				 `json:"server_id"`
+	ServerName 	string				 `json:"server_name"`
 	Servers map[string]*ServerConfig `json:"servers"`
 	Db      map[string]*DBConfig     `json:"db"`
 	Log     map[string]*LogConfig    `json:"log"`
@@ -170,3 +186,19 @@ func (scm *ServerCfgMgr) GetDB(key string) *DBConfig {
 	}
 	return v
 }
+
+func (scm *ServerCfgMgr) GetServerName() string {
+	if scm.Db == nil {
+		return ""
+	}
+	return scm.ServerName
+}
+
+
+func (scm *ServerCfgMgr) GetServerId() string {
+	if scm.Db == nil {
+		return ""
+	}
+	return scm.ServerId
+}
+

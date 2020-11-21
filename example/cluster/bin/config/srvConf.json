@@ -1,4 +1,7 @@
 {
+  "server_id": "1",
+  "server_name": "cluster_server",
+
   "log": {
     "center": {
       "logLevel": "trace",
@@ -37,11 +40,11 @@
       "port": 22001,
       "maxConn": 3000,
       "remotes": [],
-      "WatchGroup": "1"
+      "watchGroups": ["logic"]
     },
 
     "logic": {
-      "group": "1",
+      "group": "logic",
       "name": "logic",
       "host": "127.0.0.1",
       "port": 23001,
@@ -50,7 +53,7 @@
     },
 
     "logic2": {
-      "group": "1",
+      "group": "logic",
       "name": "logic2",
       "host": "127.0.0.1",
       "port": 23002,
