@@ -100,7 +100,7 @@ func (ls *LogicServer) checkMsgStatus(conn defs.IConnection, packet defs.IPacket
 
 func (ls *LogicServer) OnClientService(conn defs.IConnection, packet defs.IPacket) {
 	sessionId := packet.GetSessionId()
-	client := core.CheckAddClient(conn, sessionId, ls, true)
+	client := core.CheckAddClient(conn, sessionId, ls.OnServiceHandle, true)
 	if client == nil {
 		logger.Errorf("session nil %v", sessionId)
 		return

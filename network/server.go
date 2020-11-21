@@ -138,7 +138,7 @@ func (s *Server) onConn(conn defs.IConnection) {
 }
 
 func (s *Server) OnNewConn(conn defs.IConnection) {
-	session := NewSession(conn, conn.GetId(), s, true)
+	session := NewSession(conn, conn.GetId(), s.OnServiceHandle, true)
 	s.connMgr.AddSession(session)
 	if s.newConnCallback != nil {
 		s.newConnCallback(conn)

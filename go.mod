@@ -3,7 +3,12 @@ module lightning
 go 1.14
 
 require (
+	github.com/coreos/etcd v3.3.25+incompatible // indirect
+	github.com/coreos/go-semver v0.3.0 // indirect
+	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
+	github.com/gogo/protobuf v1.3.1 // indirect
 	github.com/golang/protobuf v1.4.2 // indirect
+	github.com/google/uuid v1.1.2 // indirect
 	github.com/gorilla/websocket v1.4.2
 	github.com/json-iterator/go v1.1.10 // indirect
 	github.com/lestrrat-go/file-rotatelogs v2.3.0+incompatible // indirect
@@ -15,8 +20,9 @@ require (
 	github.com/rogpeppe/godef v1.1.2 // indirect
 	github.com/satori/go.uuid v1.2.0
 	github.com/sirupsen/logrus v1.6.0 // indirect
+	go.uber.org/zap v1.16.0 // indirect
 	golang.org/x/tools/gopls v0.4.3 // indirect
-    google.golang.org/grpc v1.26.0
+	google.golang.org/grpc v1.26.0
 )
 
 replace github.com/lightning-go/lightning => ../lightning

@@ -105,13 +105,13 @@ func (cs *CenterServer) syncSessionData(conn defs.IConnection, packet defs.IPack
 		if s == nil {
 			continue
 		}
-		core.CheckAddClient(conn, s.SessionId, cs, true)
+		core.CheckAddClient(conn, s.SessionId, cs.OnServiceHandle, true)
 	}
 }
 
 func (cs *CenterServer) OnClientService(conn defs.IConnection, packet defs.IPacket) {
 	sessionId := packet.GetSessionId()
-	client := core.CheckAddClient(conn, sessionId, cs, true)
+	client := core.CheckAddClient(conn, sessionId, cs.OnServiceHandle, true)
 	if client == nil {
 		logger.Errorf("session nil %v", sessionId)
 		return

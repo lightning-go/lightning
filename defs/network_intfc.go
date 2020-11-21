@@ -94,7 +94,7 @@ type ServeObj interface {
 }
 
 type ISession interface {
-	GetServeObj() ServeObj
+	//GetServeObj() ServeObj
 	GetConnId() string
 	GetSessionId() string
 	Close() bool
