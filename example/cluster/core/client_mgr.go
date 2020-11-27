@@ -20,8 +20,8 @@ func DelClient(sessionId string) {
 	defaultClientMgr.DelSession(sessionId)
 }
 
-func DelClientByConnId(connId string) {
-	defaultClientMgr.DelConnSession(connId)
+func DelClientByConnId(connId string) []string {
+	return defaultClientMgr.DelConnSession(connId)
 }
 
 func RangeClient(f func(string, defs.ISession) bool) {

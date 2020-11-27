@@ -143,12 +143,13 @@ func (sm *SessionMgr) DelSession(sessionId string) {
 	}
 }
 
-func (sm *SessionMgr) DelConnSession(connId string) {
+func (sm *SessionMgr) DelConnSession(connId string) []string {
 	d := sm.getConnSession(connId)
 	if d == nil {
-		return
+		return nil
 	}
 
+	delSessionIdList := make([]string, 0)
 	d.Range(func(key, value interface{}) bool {
 		sessionId, ok := key.(string)
 		if !ok {
@@ -161,9 +162,11 @@ func (sm *SessionMgr) DelConnSession(connId string) {
 		}
 
 		sm.sessions.Del(sessionId)
+		delSessionIdList = append(delSessionIdList, sessionId)
 		return true
 	})
 	sm.connDict.Del(connId)
+	return delSessionIdList
 }
 
 func (sm *SessionMgr) RangeSession(f func(string, defs.ISession) bool) {
