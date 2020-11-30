@@ -202,3 +202,28 @@ func (dbMgr *DBMgr) Query(tableName string, f func(*sql.Rows)) {
 	f(rows)
 	rows.Close()
 }
+
+func (dbMgr *DBMgr) QueryCondEx(tableName, where string, objCallback func()interface{}, f func(interface{})) {
+	if objCallback == nil || f == nil {
+		return
+	}
+	s := fmt.Sprintf("SELECT * FROM %s WHERE %s;", tableName, where)
+	rows, err := dbMgr.dbConn.Raw(s).Rows()
+	if err != nil {
+		if err != sql.ErrNoRows {
+			dbMgr.log.Error(err)
+		}
+		return
+	}
+	for rows.Next() {
+		result := objCallback()
+		err := dbMgr.dbConn.ScanRows(rows, result)
+		if err != nil {
+			dbMgr.log.Error(err)
+			continue
+		}
+		f(result)
+	}
+	rows.Close()
+}
+

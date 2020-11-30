@@ -406,6 +406,18 @@ func (mm *MemMgrEx) setData(state int, key interface{}, d interface{}, saveDB bo
 	return true
 }
 
+func (mm *MemMgrEx) AddMem(key interface{}, d interface{}) bool {
+	return mm.setData(MEM_STATE_ORI, key, d, false)
+}
+
+func (mm *MemMgrEx) AddMemByMultiPK(keyValMap map[string]interface{}, d interface{}) bool {
+	keys, _ := mm.GetMultiPKValue(keyValMap)
+	if len(keys) == 0 {
+		return false
+	}
+	return mm.AddMem(keys, d)
+}
+
 func (mm *MemMgrEx) AddData(key interface{}, d interface{}) bool {
 	return mm.setData(MEM_STATE_NEW, key, d, true)
 }
