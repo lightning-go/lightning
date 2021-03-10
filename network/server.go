@@ -6,12 +6,13 @@
 package network
 
 import (
-	"github.com/lightning-go/lightning/conf"
-	"github.com/lightning-go/lightning/logger"
-	"github.com/lightning-go/lightning/utils"
-	"github.com/lightning-go/lightning/defs"
 	"fmt"
 	"sync"
+
+	"github.com/lightning-go/lightning/conf"
+	"github.com/lightning-go/lightning/defs"
+	"github.com/lightning-go/lightning/logger"
+	"github.com/lightning-go/lightning/utils"
 )
 
 type Server struct {
@@ -20,32 +21,26 @@ type Server struct {
 	cfg             *conf.ServerConfig
 	service         *utils.ServiceFactory
 	connMgr         *SessionMgr
-	sessionMgr      *SessionMgr
 	newConnCallback defs.ConnCallback
 	disConnCallback defs.ConnCallback
 }
 
 func NewServer(name, confPath string) *Server {
-	conf.InitCfg(confPath)
+	if len(confPath) > 0 {
+		conf.InitCfg(confPath)
+	}
 	cfg := conf.GetServer(name)
 	if cfg == nil {
 		panic(fmt.Sprintf("%v config load failed", name))
-		return nil
-	}
-
-	logConf := cfg.GetDefaultLogConf()
-	if logConf != nil {
-		logger.InitLog(logConf.LogLevel, logConf.MaxAge, logConf.RotationTime, logConf.LogPath)
 	}
 
 	addr := fmt.Sprintf(":%v", cfg.Port)
 	s := &Server{
-		TcpServer:  NewTcpServer(addr, name, cfg.MaxConn),
-		remotes:    &sync.Map{},
-		cfg:        cfg,
-		service:    utils.NewServiceFactory(),
-		connMgr:    NewSessionMgr(),
-		sessionMgr: NewSessionMgr(),
+		TcpServer: NewTcpServer(addr, name, cfg.MaxConn),
+		remotes:   &sync.Map{},
+		cfg:       cfg,
+		service:   utils.NewServiceFactory(),
+		connMgr:   NewSessionMgr(),
 	}
 	s.init()
 
@@ -143,7 +138,7 @@ func (s *Server) onConn(conn defs.IConnection) {
 }
 
 func (s *Server) OnNewConn(conn defs.IConnection) {
-	session := NewSession(conn, conn.GetId(), s, false)
+	session := NewSession(conn, conn.GetId(), s.OnServiceHandle, true)
 	s.connMgr.AddSession(session)
 	if s.newConnCallback != nil {
 		s.newConnCallback(conn)
@@ -156,51 +151,16 @@ func (s *Server) OnDisConn(conn defs.IConnection) {
 	}
 	connId := conn.GetId()
 	s.connMgr.DelSession(connId)
-	s.sessionMgr.DelConnSession(connId)
 }
 
-func (s *Server) GetConn(connId string) *Session {
+func (s *Server) GetConn(connId string) defs.ISession {
 	return s.connMgr.GetSession(connId)
 }
 
-func (s *Server) RangeConn(f func(string, *Session)) {
+func (s *Server) RangeConn(f func(string, defs.ISession) bool) {
 	s.connMgr.RangeSession(f)
 }
 
-func (s *Server) GetSession(sessionId string) *Session {
-	return s.sessionMgr.GetSession(sessionId)
-}
-
-func (s *Server) DelSession(sessionId string) {
-	s.sessionMgr.DelSession(sessionId)
-}
-
-func (s *Server) RangeSession(f func(string, *Session)) {
-	s.sessionMgr.RangeSession(f)
-}
-
-func (s *Server) GetSessionCount() int64 {
-	return s.sessionMgr.SessionCount()
-}
-
-func (s *Server) CheckAddSession(conn defs.IConnection, sessionId string, async ...bool) *Session {
-	session := s.sessionMgr.GetSession(sessionId)
-	if session == nil {
-		session = NewSession(conn, sessionId, s, async...)
-		if session == nil {
-			return nil
-		}
-		s.sessionMgr.AddSession(session)
-	}
-	return session
-}
-
-func (s *Server) OnSessionService(conn defs.IConnection, packet defs.IPacket) {
-	sessionId := packet.GetSessionId()
-	session := s.CheckAddSession(conn, sessionId, true)
-	if session == nil {
-		logger.Errorf("session nil %v", sessionId)
-		return
-	}
-	session.OnService(packet)
+func (s *Server) GetConnNum() int64 {
+	return s.connMgr.SessionCount()
 }

@@ -102,15 +102,18 @@ func (sf *ServiceFactory) OnServiceHandle(session defs.ISession, packet defs.IPa
 	}
 	req := reflect.New(typ.ArgType.Elem())
 
-	if sf.ParseDataCallback == nil {
-		if !ParseDataByJson(packet.GetData(), req.Interface()) {
-			logger.Trace("parse request data failed")
-			return false
-		}
-	} else {
-		if !sf.ParseDataCallback(packet.GetData(), req.Interface()) {
-			logger.Trace("parse request data failed")
-			return false
+	data := packet.GetData()
+	if data != nil && len(data) > 0 {
+		if sf.ParseDataCallback == nil {
+			if !ParseDataByJson(data, req.Interface()) {
+				logger.Trace("parse request data failed")
+				return false
+			}
+		} else {
+			if !sf.ParseDataCallback(data, req.Interface()) {
+				logger.Trace("parse request data failed")
+				return false
+			}
 		}
 	}
 
@@ -192,7 +195,7 @@ func (sf *ServiceFactory) suitableMethods(rcvr interface{}, rcvr2 *reflect.Value
 
 		paramNum := mtype.NumIn()
 		if paramNum < 3 {
-			logger.Errorf("function: %v, param num %v, least 2",
+			logger.Debugf("function: %v, param num %v, least 2",
 				method.Name, IF(paramNum > 0, paramNum-1, 0))
 			continue
 		}
@@ -203,7 +206,7 @@ func (sf *ServiceFactory) suitableMethods(rcvr interface{}, rcvr2 *reflect.Value
 		if paramNum == 4 {
 			replyType = mtype.In(3)
 			if replyType.Kind() != reflect.Ptr {
-				logger.Error("method reply type not a pointer")
+				logger.Debug("method reply type not a pointer")
 				continue
 			}
 			if !sf.IsExportedOrBuiltinType(replyType) {
@@ -213,7 +216,7 @@ func (sf *ServiceFactory) suitableMethods(rcvr interface{}, rcvr2 *reflect.Value
 
 		returnType := mtype.Out(0)
 		if returnType != TypeOfInt {
-			logger.Error("method returns: not int")
+			logger.Debug("method returns: not int")
 			continue
 		}
 

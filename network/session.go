@@ -7,21 +7,53 @@ package network
 
 import (
 	"github.com/lightning-go/lightning/defs"
-	"github.com/lightning-go/lightning/conf"
 	"github.com/lightning-go/lightning/logger"
+	"sync"
+	"sync/atomic"
+	"runtime/debug"
+	"github.com/lightning-go/lightning/conf"
 )
 
-type Session struct {
-	id         string
-	conn       defs.IConnection
-	packetData chan defs.IPacket
-	isAsync    bool
-	serve      defs.ServeObj
-	packet     defs.IPacket
+type ServiceHandle func(defs.ISession, defs.IPacket) bool
+
+type queueData struct {
+	session defs.ISession
+	packet  defs.IPacket
 }
 
-func NewSession(conn defs.IConnection, sessionId string, serve defs.ServeObj, async ...bool) *Session {
-	if conn == nil || serve == nil {
+var defaultSessionData = sync.Pool{
+	New: func() interface{} {
+		return &queueData{}
+	},
+}
+
+func newSessionQueueData() *queueData {
+	return defaultSessionData.Get().(*queueData)
+}
+
+func freeSessionQueueData(v *queueData) {
+	if v != nil {
+		defaultSessionData.Put(v)
+	}
+}
+
+type Session struct {
+	id   string
+	conn defs.IConnection
+	//packetData   chan defs.IPacket
+	isAsync      bool
+	//serve        defs.ServeObj
+	serviceHandle ServiceHandle
+	packet       defs.IPacket
+	queue        chan *queueData
+	queueWorking int32
+	queueWait    sync.WaitGroup
+	closed       int32
+}
+
+//func NewSession(conn defs.IConnection, sessionId string, serve defs.ServeObj, async ...bool) *Session {
+func NewSession(conn defs.IConnection, sessionId string, serviceHandle ServiceHandle, async ...bool) *Session {
+	if conn == nil || serviceHandle == nil {
 		return nil
 	}
 	isAsync := false
@@ -30,17 +62,21 @@ func NewSession(conn defs.IConnection, sessionId string, serve defs.ServeObj, as
 	}
 
 	s := &Session{
-		id:      sessionId,
-		conn:    conn,
-		isAsync: isAsync,
-		serve:   serve,
+		id:           sessionId,
+		conn:         conn,
+		isAsync:      isAsync,
+		//serve:        serve,
+		serviceHandle: serviceHandle,
+		queueWorking: 0,
 	}
-
-	if isAsync {
-		s.enableReadQueue()
-	}
+	atomic.StoreInt32(&s.closed, 0)
 
 	return s
+}
+
+func (s *Session) isSessionClosed() bool {
+	v := atomic.LoadInt32(&s.closed)
+	return v > 0
 }
 
 func (s *Session) GetPacket() defs.IPacket {
@@ -51,9 +87,9 @@ func (s *Session) SetPacket(packet defs.IPacket) {
 	s.packet = packet
 }
 
-func (s *Session) GetServeObj() defs.ServeObj {
-	return s.serve
-}
+//func (s *Session) GetServeObj() defs.ServeObj {
+//	return s.serve
+//}
 
 func (s *Session) Close() bool {
 	s.CloseSession()
@@ -61,9 +97,10 @@ func (s *Session) Close() bool {
 }
 
 func (s *Session) CloseSession() bool {
-	if s.packetData != nil {
-		close(s.packetData)
+	if s.queue != nil {
+		close(s.queue)
 	}
+	atomic.StoreInt32(&s.closed, 1)
 	return true
 }
 
@@ -102,36 +139,85 @@ func (s *Session) WriteDataById(id string, data []byte) {
 	s.conn.WriteDataById(id, data)
 }
 
+func (s *Session) WritePacketAwait(packet defs.IPacket) (defs.IPacket, error) {
+	return s.conn.WritePacketAwait(packet)
+}
+
+func (s *Session) WriteDataAwait(data []byte) (defs.IPacket, error) {
+	return s.conn.WriteDataAwait(data)
+}
+
+func (s *Session) WriteDataByIdAwait(id string, data []byte) (defs.IPacket, error) {
+	return s.conn.WriteDataByIdAwait(id, data)
+}
+
 func (s *Session) enableReadQueue() {
-	if s.serve == nil {
-		logger.Warn("server is nil")
+	//if s.serve == nil {
+	if s.serviceHandle == nil {
+		logger.Warn("serviceHandle is nil")
 		return
 	}
-	s.packetData = make(chan defs.IPacket, conf.GetGlobalVal().MaxQueueSize)
+
+	s.queue = make(chan *queueData, conf.GetGlobalVal().MaxQueueSize)
+
 	go func() {
-		for packet := range s.packetData {
-			if packet == nil {
+		atomic.StoreInt32(&s.queueWorking, 1)
+		s.queueWait.Done()
+
+		defer func() {
+			atomic.StoreInt32(&s.queueWorking, 0)
+			err := recover()
+			if err != nil {
+				logger.Error(err)
+				logger.Error(string(debug.Stack()))
+			}
+		}()
+
+		for d := range s.queue {
+			if s.isSessionClosed() {
+				break
+			}
+			if d == nil {
 				continue
 			}
-			s.serve.OnServiceHandle(s, packet)
+			//s.serve.OnServiceHandle(d.session, d.packet)
+			s.serviceHandle(d.session, d.packet)
+			freeSessionQueueData(d)
 		}
 		logger.Tracef("session closed %v", s.id)
 	}()
 }
 
-func (s *Session) OnService(packet defs.IPacket) bool {
-	if s.serve == nil {
-		logger.Warn("server is nil")
+func (s *Session) OnService(session defs.ISession, packet defs.IPacket) bool {
+	if s.isSessionClosed() {
 		return false
 	}
-	if packet == nil {
+	//if s.serve == nil {
+	if s.serviceHandle == nil {
+		logger.Warn("serviceHandle is nil")
+		return false
+	}
+	if session == nil || packet == nil {
+		logger.Warn("session or packet is nil")
 		return false
 	}
 	if s.isAsync {
+		v := atomic.LoadInt32(&s.queueWorking)
+		if v == 0 {
+			s.queueWait.Add(1)
+			s.enableReadQueue()
+			s.queueWait.Wait()
+		}
+
+		d := newSessionQueueData()
+		d.session = session
+		d.packet = packet
+
 		select {
-		case s.packetData <- packet:
+		case s.queue <- d:
 		}
 		return true
 	}
-	return s.serve.OnServiceHandle(s, packet)
+	//return s.serve.OnServiceHandle(session, packet)
+	return s.serviceHandle(session, packet)
 }

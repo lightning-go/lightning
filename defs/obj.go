@@ -6,6 +6,7 @@
 package defs
 
 import (
+	"strconv"
 	"sync"
 	"reflect"
 )
@@ -31,8 +32,17 @@ func (p *Packet) GetId() string {
 	return p.id
 }
 
-func (p *Packet) SetId(id string) {
-	p.id = id
+func (p *Packet) SetId(id interface{}) {
+	switch id.(type) {
+	case string:
+		p.id = id.(string)
+	case int:
+		p.id = strconv.Itoa(id.(int))
+	case int32:
+		p.id = strconv.Itoa(int(id.(int32)))
+	case int64:
+		p.id = strconv.FormatInt(id.(int64), 10)
+	}
 }
 
 func (p *Packet) GetData() []byte {

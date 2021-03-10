@@ -7,28 +7,25 @@ package main
 
 import (
 	"testing"
-	"logger/log"
 	"github.com/lightning-go/lightning/defs"
 	"fmt"
 	"github.com/lightning-go/lightning/utils"
 	"github.com/lightning-go/lightning/network"
 	"github.com/lightning-go/lightning/module"
-	"github.com/lightning-go/lightning/logger"
 	"time"
 	"github.com/lightning-go/lightning/example/cluster/msg"
 	"github.com/lightning-go/lightning/example/cluster/common"
 )
 
 func TestGame(t *testing.T)  {
-	logger.SetLevel(logger.INFO)
-
 	waitInput := make(chan bool, 1)
 
 	client := network.NewTcpClient("client", "127.0.0.1:22001")
 	if client == nil {
-		log.ERROR("new client faield")
+		fmt.Println("new client faield")
 		return
 	}
+	defer client.Close()
 
 	client.SetConnCallback(func(conn defs.IConnection) {
 		closed := conn.IsClosed()
@@ -74,7 +71,10 @@ func TestGame(t *testing.T)  {
 	p3.SetData(d)
 	client.SendPacket(p3)
 
+	p4 := &defs.Packet{}
+	p4.SetId("TestNil")
+	client.SendPacket(p4)
+
 
 	time.Sleep(time.Second * 10)
-	client.Close()
 }

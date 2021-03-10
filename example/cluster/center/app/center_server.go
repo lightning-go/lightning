@@ -13,6 +13,8 @@ import (
 	"github.com/lightning-go/lightning/example/cluster/common"
 	"github.com/lightning-go/lightning/example/cluster/center/service"
 	"github.com/lightning-go/lightning/example/cluster/msg"
+	"github.com/lightning-go/lightning/conf"
+	"github.com/lightning-go/lightning/example/cluster/core"
 )
 
 type CenterServer struct {
@@ -21,17 +23,32 @@ type CenterServer struct {
 
 func NewCenterServer(name, confPath string) *CenterServer {
 	cs := &CenterServer{
-		Server: network.NewServer(name, confPath),
+		Server:    network.NewServer(name, confPath),
 	}
 	cs.init()
 	return cs
 }
 
 func (cs *CenterServer) init() {
+	cs.initLog()
+
 	cs.SetCodec(&module.HeadCodec{})
 	cs.SetAuthorizedCallback(cs.onAuthorized)
 	cs.SetMsgCallback(cs.onMsg)
+	cs.SetDisConnCallback(cs.onDisConn)
+
 	cs.RegisterService(&service.LogicService{})
+}
+
+func (cs *CenterServer) initLog() {
+	logConf := conf.GetLogConf("center")
+	if logConf != nil {
+		logger.InitLog(logConf.LogLevel, logConf.MaxAge, logConf.RotationTime, logConf.LogPath)
+	}
+}
+
+func (cs *CenterServer) onDisConn(conn defs.IConnection) {
+	core.DelClientByConnId(conn.GetId())
 }
 
 func (cs *CenterServer) onAuthorized(conn defs.IConnection, packet defs.IPacket) bool {
@@ -52,7 +69,7 @@ func (cs *CenterServer) onMsg(conn defs.IConnection, packet defs.IPacket) {
 		return
 	}
 
-	cs.OnSessionService(conn, packet)
+	cs.OnClientService(conn, packet)
 }
 
 func (cs *CenterServer) checkMsgStatus(conn defs.IConnection, packet defs.IPacket) bool {
@@ -64,7 +81,7 @@ func (cs *CenterServer) checkMsgStatus(conn defs.IConnection, packet defs.IPacke
 
 	switch status {
 	case msg.RESULT_DISCONN:
-		cs.DelSession(sessionId)
+		core.DelClient(sessionId)
 	case msg.RESULT_SYNC_SESSION:
 		cs.syncSessionData(conn, packet)
 	default:
@@ -81,13 +98,23 @@ func (cs *CenterServer) syncSessionData(conn defs.IConnection, packet defs.IPack
 	}
 	var sessionData []*msg.SessionData
 	err := common.Unmarshal(data, &sessionData)
-	if err != nil || sessionData == nil{
+	if err != nil || sessionData == nil {
 		return
 	}
 	for _, s := range sessionData {
 		if s == nil {
 			continue
 		}
-		cs.CheckAddSession(conn, s.SessionId, true)
+		core.CheckAddClient(conn, s.SessionId, cs.OnServiceHandle, true)
 	}
+}
+
+func (cs *CenterServer) OnClientService(conn defs.IConnection, packet defs.IPacket) {
+	sessionId := packet.GetSessionId()
+	client := core.CheckAddClient(conn, sessionId, cs.OnServiceHandle, true)
+	if client == nil {
+		logger.Errorf("session nil %v", sessionId)
+		return
+	}
+	client.OnService(client, packet)
 }

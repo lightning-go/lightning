@@ -10,9 +10,9 @@ import (
 	"github.com/lightning-go/lightning/defs"
 	"github.com/lightning-go/lightning/logger"
 	"github.com/lightning-go/lightning/utils"
-	"github.com/lightning-go/lightning/network"
 	"github.com/lightning-go/lightning/example/cluster/common"
 	"github.com/lightning-go/lightning/example/cluster/msg"
+	"github.com/lightning-go/lightning/example/cluster/core"
 )
 
 func (ls *LogicServer) SendDataToCenter(session defs.ISession, d interface{}) {
@@ -50,31 +50,32 @@ func (ls *LogicServer) initRemoteCenter() {
 		return
 	}
 	center.SetCodec(&module.HeadCodec{})
-	center.SetConnCallback(ls.onRemoteConn)
-	center.SetMsgCallback(ls.onRemoteMsg)
+	center.SetConnCallback(ls.onCenterConn)
+	center.SetMsgCallback(ls.onCenterMsg)
 }
 
-func (ls *LogicServer) onRemoteConn(conn defs.IConnection) {
+func (ls *LogicServer) onCenterConn(conn defs.IConnection) {
 	logger.Tracef("%s -> %s server %s is %s",
-		conn.LocalAddr(), "remote", conn.RemoteAddr(),
+		conn.LocalAddr(), "center", conn.RemoteAddr(),
 		utils.IF(conn.IsClosed(), "down", "up"))
 	if conn.IsClosed() {
-		ls.onRemoteDisconn(conn)
+		ls.onCenterDisconn(conn)
 	} else {
-		ls.onRemoteNewConn(conn)
+		ls.onCenterNewConn(conn)
 	}
 }
 
-func (ls *LogicServer) onRemoteNewConn(conn defs.IConnection) {
+func (ls *LogicServer) onCenterNewConn(conn defs.IConnection) {
 	data := common.GetAuthorizedData(int32(common.ST_LOGIC), ls.Name(), common.LogicKey)
 	conn.WriteData(data)
 
 	sessionData := make([]*msg.SessionData, 0)
-	ls.RangeSession(func(sessionId string, s *network.Session) {
+	core.RangeClient(func(sessionId string, s defs.ISession) bool {
 		session := &msg.SessionData{
 			SessionId: sessionId,
 		}
 		sessionData = append(sessionData, session)
+		return true
 	})
 	if len(sessionData) > 0 {
 		data = common.MarshalDataEx(sessionData)
@@ -86,17 +87,17 @@ func (ls *LogicServer) onRemoteNewConn(conn defs.IConnection) {
 
 }
 
-func (ls *LogicServer) onRemoteDisconn(conn defs.IConnection) {
+func (ls *LogicServer) onCenterDisconn(conn defs.IConnection) {
 }
 
 
-func (ls *LogicServer) onRemoteMsg(conn defs.IConnection, packet defs.IPacket) {
-	logger.Tracef("onRemoteMsg: %v - %v - %v", packet.GetSessionId(), packet.GetId(), string(packet.GetData()))
+func (ls *LogicServer) onCenterMsg(conn defs.IConnection, packet defs.IPacket) {
+	logger.Tracef("onCenterMsg: %v - %v - %v", packet.GetSessionId(), packet.GetId(), string(packet.GetData()))
 
-	session := ls.GetSession(packet.GetSessionId())
-	if session == nil {
+	client := core.GetClient(packet.GetSessionId())
+	if client == nil {
 		return
 	}
-	ls.centerService.OnServiceHandle(session, packet)
+	ls.centerService.OnServiceHandle(client, packet)
 }
 

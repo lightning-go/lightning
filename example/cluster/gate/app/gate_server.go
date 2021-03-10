@@ -16,6 +16,7 @@ import (
 	"github.com/lightning-go/lightning/example/cluster/gate/service"
 	"github.com/lightning-go/lightning/utils"
 	"github.com/lightning-go/lightning/example/cluster/msg"
+	"github.com/lightning-go/lightning/conf"
 )
 
 const (
@@ -39,11 +40,13 @@ func NewGateServer(name, confPath string) *GateServer {
 }
 
 func (gs *GateServer) init() {
+	gs.initLog()
+
 	gs.SetCodec(&module.HeadCodec{})
 	gs.SetMsgCallback(gs.onMsg)
 	gs.SetDisConnCallback(gs.onDisConn)
 
-	gs.watch()
+	gs.initEtcd()
 	gs.RegisterService(&service.GateService{})
 
 	gs.serveSelector.SetCleanSessionCallback(func(sessionId string) {
@@ -52,6 +55,13 @@ func (gs *GateServer) init() {
 			session.Close()
 		}
 	})
+}
+
+func (gs *GateServer) initLog() {
+	logConf := conf.GetLogConf("gate")
+	if logConf != nil {
+		logger.InitLog(logConf.LogLevel, logConf.MaxAge, logConf.RotationTime, logConf.LogPath)
+	}
 }
 
 func (gs *GateServer) onDisConn(conn defs.IConnection) {
@@ -81,10 +91,11 @@ func (gs *GateServer) onMsg(conn defs.IConnection, packet defs.IPacket) {
 	gs.onClientMsg(session, packet)
 }
 
-func (gs *GateServer) isMsgValid(session *network.Session) bool {
+func (gs *GateServer) isMsgValid(session defs.ISession) bool {
 	if session == nil {
 		return false
 	}
+
 	now := time.Now().Unix()
 	var lastTimestamp int64 = 0
 	var msgCount int64 = 0
@@ -103,7 +114,7 @@ func (gs *GateServer) isMsgValid(session *network.Session) bool {
 		}
 		if msgCount > maxMsgCount {
 			logger.Warnf("recv msg count > %v in 1 sec, msgCount %v, addr: %v",
-				maxMsgCount, msgCount, session.GetConn().RemoteAddr())
+				maxMsgCount, msgCount, session.(*network.Session).GetConn().RemoteAddr())
 			return false
 		}
 		msgCount++
@@ -119,7 +130,7 @@ func (gs *GateServer) isMsgValid(session *network.Session) bool {
 	return true
 }
 
-func (gs *GateServer) onClientMsg(session *network.Session, packet defs.IPacket) {
+func (gs *GateServer) onClientMsg(session defs.ISession, packet defs.IPacket) {
 	if gs.onGateService(session, packet) {
 		return
 	}
@@ -147,7 +158,7 @@ func (gs *GateServer) onClientMsg(session *network.Session, packet defs.IPacket)
 	gs.serveSelector.AddRemoteSession(sessionId, remote)
 }
 
-func (gs *GateServer) onGateService(session *network.Session, packet defs.IPacket) bool {
+func (gs *GateServer) onGateService(session defs.ISession, packet defs.IPacket) bool {
 	return gs.OnServiceHandle(session, packet)
 }
 

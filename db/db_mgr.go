@@ -14,24 +14,13 @@ import (
 	"database/sql"
 )
 
-const dbLogPath = "./logs/db.log"
-
 const (
 	DB_type_mysql    = "mysql"
 	DB_type_postgres = "postgres"
-	DB_type_sqlite3  = "sqlite3"
 )
 
 type IDBMgr interface {
 	Close()
-	QueryPrimaryKey(pk, tableName string) uint64
-	QueryOneCond(tableName, where string, f func(*sql.Row))
-	QueryCond(tableName, where string, f func(*sql.Rows))
-	QueryKeyCond(tableName, key, where string, f func(*sql.Rows))
-	Query(tableName string, f func(*sql.Rows))
-	Insert(tableName, fields, value string) error
-	Update(tableName, fields, value string) error
-	Delete(tableName, where string) error
 }
 
 type DBMgr struct {
@@ -51,11 +40,9 @@ func NewDBMgr(dbType, dbName, user, pwd, host string) *DBMgr {
 		pwd:    pwd,
 		log:    logger.NewLogger(logger.TRACE),
 	}
-
 	if dbMgr.log == nil {
 		return nil
 	}
-	dbMgr.log.SetRotation(time.Hour*24*30, time.Hour*24, dbLogPath)
 
 	sqlConn := ""
 	switch dbType {
@@ -63,8 +50,6 @@ func NewDBMgr(dbType, dbName, user, pwd, host string) *DBMgr {
 		sqlConn = dbMgr.getMySQLConn()
 	case DB_type_postgres:
 		sqlConn = dbMgr.getPostgreSQLConn()
-	case DB_type_sqlite3:
-		sqlConn = dbMgr.getSqlite3Conn()
 	}
 	if len(sqlConn) == 0 {
 		return nil
@@ -78,9 +63,21 @@ func NewDBMgr(dbType, dbName, user, pwd, host string) *DBMgr {
 	}
 
 	dbMgr.dbConn.SingularTable(true)
+	AddDB(dbName, dbMgr)
 
 	dbMgr.log.Info("database is connected", logger.Fields{"db": dbName})
 	return dbMgr
+}
+
+func (dbMgr *DBMgr) SetLogLevel(lvKey string) {
+	dbMgr.log.SetLevel(logger.GetLevel(lvKey))
+}
+
+func (dbMgr *DBMgr) SetLogRotation(maxAge, rotationTime int, pathFile string) {
+	if dbMgr.log == nil {
+		dbMgr.log = logger.NewLogger(logger.TRACE)
+	}
+	dbMgr.log.SetRotation(time.Minute*time.Duration(maxAge), time.Minute*time.Duration(rotationTime), pathFile)
 }
 
 func (dbMgr *DBMgr) getMySQLConn() string {
@@ -94,10 +91,6 @@ func (dbMgr *DBMgr) getPostgreSQLConn() string {
 		dbMgr.user, dbMgr.pwd, dbMgr.host, dbMgr.dbName)
 }
 
-func (dbMgr *DBMgr) getSqlite3Conn() string {
-	return dbMgr.dbName
-}
-
 func (dbMgr *DBMgr) Close() {
 	dbMgr.dbConn.Close()
 }
@@ -105,3 +98,132 @@ func (dbMgr *DBMgr) Close() {
 func (dbMgr *DBMgr) DBConn() *gorm.DB {
 	return dbMgr.dbConn
 }
+
+func (dbMgr *DBMgr) QueryRecord(tableName, where string, dest interface{}) error {
+	s := fmt.Sprintf("SELECT * FROM %s WHERE %s;", tableName, where)
+	raw := dbMgr.dbConn.Raw(s)
+	if raw.Error != nil {
+		return raw.Error
+	}
+	return raw.Scan(dest).Error
+}
+
+func (dbMgr *DBMgr) NewRecord(dest interface{}) error {
+	return dbMgr.dbConn.Create(dest).Error
+}
+
+func (dbMgr *DBMgr) SaveRecord(dest interface{}) error {
+	return dbMgr.dbConn.Save(dest).Error
+}
+
+func (dbMgr *DBMgr) Insert(tableName, fields, value string) error {
+	s := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s);", tableName, fields, value)
+	return dbMgr.dbConn.Exec(s).Error
+}
+
+func (dbMgr *DBMgr) Update(tableName, fields, value string) error {
+	s := fmt.Sprintf("UPDATE %s SET %s WHERE %s;", tableName, fields, value)
+	return dbMgr.dbConn.Exec(s).Error
+}
+
+func (dbMgr *DBMgr) Delete(tableName, where string) error {
+	s := fmt.Sprintf("DELETE FROM %s WHERE %s;", tableName, where)
+	return dbMgr.dbConn.Exec(s).Error
+}
+
+func (dbMgr *DBMgr) QueryPrimaryKey(pk, tableName string) int64 {
+	s := fmt.Sprintf("SELECT %s FROM %s ORDER BY %s DESC LIMIT 1;", pk, tableName, pk)
+	row := dbMgr.dbConn.Raw(s).Row()
+	var id int64
+	err := row.Scan(&id)
+	if err != nil {
+		if err != sql.ErrNoRows {
+			dbMgr.log.Error(err)
+			return -1
+		}
+		return 0
+	}
+	return id
+}
+
+func (dbMgr *DBMgr) QueryOneCond(tableName, where string, f func(*sql.Row)) {
+	if f == nil {
+		return
+	}
+	s := fmt.Sprintf("SELECT * FROM %s WHERE %s;", tableName, where)
+	row := dbMgr.dbConn.Raw(s).Row()
+	f(row)
+}
+
+func (dbMgr *DBMgr) QueryCond(tableName, where string, f func(*sql.Rows)) {
+	if f == nil {
+		return
+	}
+	s := fmt.Sprintf("SELECT * FROM %s WHERE %s;", tableName, where)
+	rows, err := dbMgr.dbConn.Raw(s).Rows()
+	if err != nil {
+		if err != sql.ErrNoRows {
+			dbMgr.log.Error(err)
+		}
+		return
+	}
+	f(rows)
+	rows.Close()
+}
+
+func (dbMgr *DBMgr) QueryKeyCond(tableName, key, where string, f func(*sql.Rows)) {
+	if f == nil {
+		return
+	}
+	s := fmt.Sprintf("SELECT %s FROM %s WHERE %s;", key, tableName, where)
+	rows, err := dbMgr.dbConn.Raw(s).Rows()
+	if err != nil {
+		if err != sql.ErrNoRows {
+			dbMgr.log.Error(err)
+		}
+		return
+	}
+	f(rows)
+	rows.Close()
+}
+
+func (dbMgr *DBMgr) Query(tableName string, f func(*sql.Rows)) {
+	if f == nil {
+		return
+	}
+	s := fmt.Sprintf("SELECT * FROM %s;", tableName)
+	rows, err := dbMgr.dbConn.Raw(s).Rows()
+	if err != nil {
+		if err != sql.ErrNoRows {
+			dbMgr.log.Error(err)
+		}
+		return
+	}
+	f(rows)
+	rows.Close()
+}
+
+func (dbMgr *DBMgr) QueryCondEx(tableName, where string, objCallback func()interface{}, f func(interface{})) {
+	if objCallback == nil || f == nil {
+		return
+	}
+	s := fmt.Sprintf("SELECT * FROM %s WHERE %s;", tableName, where)
+	rows, err := dbMgr.dbConn.Raw(s).Rows()
+	if err != nil {
+		if err != sql.ErrNoRows {
+			dbMgr.log.Error(err)
+		}
+		return
+	}
+	for rows.Next() {
+		result := objCallback()
+		err := dbMgr.dbConn.ScanRows(rows, result)
+		if err != nil {
+			dbMgr.log.Error(err)
+			continue
+		}
+		f(result)
+	}
+	rows.Close()
+}
+

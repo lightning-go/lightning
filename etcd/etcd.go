@@ -200,7 +200,7 @@ func (e *Etcd) Watch(key string, putCallback, delCallback func(k, v []byte)) {
 
 }
 
-func (e *Etcd) KeepOnline(key, value string, ttl int64) {
+func (e *Etcd) KeepOnlineEx(key, value string, ttl int64) {
 	if ttl <= 0 {
 		return
 	}
@@ -252,4 +252,22 @@ func (e *Etcd) KeepOnline(key, value string, ttl int64) {
 		}
 	}
 
+}
+
+func (e *Etcd) KeepOnline(ttl int64, callback func()(string, string, bool)) {
+	if callback == nil {
+		e.log.Error("callback is nil")
+		return
+	}
+	go func() {
+		for {
+			key, value, ok := callback()
+			if !ok {
+				goto RETRY
+			}
+			e.Put(key, value, ttl)
+		RETRY:
+			time.Sleep(time.Second * 1)
+		}
+	}()
 }

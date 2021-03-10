@@ -10,7 +10,7 @@ type IPacket interface {
 	GetData() []byte
 	SetSessionId(string)
 	GetSessionId() string
-	SetId(string)
+	SetId(interface{})
 	GetId() string
 	SetStatus(int)
 	GetStatus() int

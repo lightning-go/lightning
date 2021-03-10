@@ -33,6 +33,10 @@ func IF(b bool, t1, t2 interface{}) interface{} {
 	return t2
 }
 
+func GetNowTimeMillisecond() int64 {
+	return int64(float64(time.Now().UnixNano()) * 0.000001)
+}
+
 func NowTimeFormat() string {
 	return time.Now().Format("2006-01-02 15:04:05")
 }

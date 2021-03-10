@@ -8,6 +8,7 @@ package network
 import (
 	"sync"
 	"sync/atomic"
+	"github.com/lightning-go/lightning/defs"
 )
 
 type Map struct {
@@ -48,11 +49,11 @@ func GetSessionMgr() *SessionMgr {
 	return defaultSessionMgr
 }
 
-func AddSession(s *Session) {
+func AddSession(s defs.ISession) {
 	defaultSessionMgr.AddSession(s)
 }
 
-func GetSession(sessionId string) *Session {
+func GetSession(sessionId string) defs.ISession {
 	return defaultSessionMgr.GetSession(sessionId)
 }
 
@@ -60,7 +61,7 @@ func DelSession(sessionId string) {
 	defaultSessionMgr.DelSession(sessionId)
 }
 
-func RangeSession(f func(sId string, s *Session)) {
+func RangeSession(f func(sId string, s defs.ISession) bool) {
 	defaultSessionMgr.RangeSession(f)
 }
 
@@ -82,7 +83,7 @@ func (sm *SessionMgr) SessionCount() int64 {
 	return sm.sessions.Length()
 }
 
-func (sm *SessionMgr) AddSession(s *Session) {
+func (sm *SessionMgr) AddSession(s defs.ISession) {
 	if s == nil {
 		return
 	}
@@ -114,12 +115,12 @@ func (sm *SessionMgr) getConnSession(connId string) *sync.Map {
 	return d2
 }
 
-func (sm *SessionMgr) GetSession(sessionId string) *Session {
+func (sm *SessionMgr) GetSession(sessionId string) defs.ISession {
 	v, ok := sm.sessions.Get(sessionId)
 	if !ok {
 		return nil
 	}
-	s, ok := v.(*Session)
+	s, ok := v.(defs.ISession)
 	if !ok {
 		return nil
 	}
@@ -142,12 +143,13 @@ func (sm *SessionMgr) DelSession(sessionId string) {
 	}
 }
 
-func (sm *SessionMgr) DelConnSession(connId string) {
+func (sm *SessionMgr) DelConnSession(connId string) []string {
 	d := sm.getConnSession(connId)
 	if d == nil {
-		return
+		return nil
 	}
 
+	delSessionIdList := make([]string, 0)
 	d.Range(func(key, value interface{}) bool {
 		sessionId, ok := key.(string)
 		if !ok {
@@ -160,21 +162,22 @@ func (sm *SessionMgr) DelConnSession(connId string) {
 		}
 
 		sm.sessions.Del(sessionId)
+		delSessionIdList = append(delSessionIdList, sessionId)
 		return true
 	})
 	sm.connDict.Del(connId)
+	return delSessionIdList
 }
 
-func (sm *SessionMgr) RangeSession(f func(string, *Session)) {
+func (sm *SessionMgr) RangeSession(f func(string, defs.ISession) bool) {
 	if f == nil {
 		return
 	}
 	sm.sessions.Range(func(k, v interface{}) bool {
-		session, ok := v.(*Session)
+		session, ok := v.(defs.ISession)
 		if !ok {
 			return true
 		}
-		f(session.GetSessionId(), session)
-		return true
+		return f(session.GetSessionId(), session)
 	})
 }

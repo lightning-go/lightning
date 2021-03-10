@@ -1,32 +1,20 @@
-/**
- * Created: 2019/6/15
- * @author: Jason
- */
-
-package main
+package db
 
 import (
-	"github.com/lightning-go/lightning/db"
 	"fmt"
-	"database/sql"
 	"strconv"
+	"testing"
+	"database/sql"
 )
 
-type User struct {
-	Id     int    `db:"id"`
-	Name   string `db:"name"`
-	Remark int    `db:"remark"`
-}
-
-func singleKeyTest(rc *db.RedisClient) {
+func singleKeyTest(rc *RedisClient) {
 	if rc == nil {
 		return
 	}
 
-	mem := db.NewMemMgr(rc, false, "test", "user", []string{"id"}, "name")
+	mem := NewMemMgr(rc, false, "test", "user", []string{"id"}, "name")
 	mem.LoadDB()
 
-	//查
 	memMode := mem.QueryCheckDBByPK(strconv.Itoa(2))
 	if memMode != nil {
 		id := memMode.Data["id"]
@@ -35,7 +23,6 @@ func singleKeyTest(rc *db.RedisClient) {
 		test := memMode.Data["test"]
 		fmt.Println("query:", id, name, remark, test)
 
-		//改
 		m := mem.UpdateByPk("2", "name", "jim")
 		id = m.Data["id"]
 		name = m.Data["name"]
@@ -63,8 +50,7 @@ func singleKeyTest(rc *db.RedisClient) {
 		mem.UpdateByPk("1", "name", "xxx")
 	}
 
-	//增
-	memMode = db.NewMemMode()
+	memMode = NewMemMode()
 	memMode.Data["id"] = 3
 	memMode.Data["name"] = "Jason"
 	memMode.Data["remark"] = 1
@@ -72,7 +58,7 @@ func singleKeyTest(rc *db.RedisClient) {
 	mem.AddData(memMode, false)
 	mem.SyncMemMode(memMode)
 
-	memMode = db.NewMemMode()
+	memMode = NewMemMode()
 	memMode.Data["id"] = 4
 	memMode.Data["name"] = "Toney"
 	memMode.Data["remark"] = 1
@@ -96,7 +82,6 @@ func singleKeyTest(rc *db.RedisClient) {
 		fmt.Println("query:", id, name, remark, test)
 	}
 
-	//删
 	mem.DelDataCheckDBByPK("3")
 	memMode = mem.QueryCheckDBByPK(strconv.Itoa(3))
 	if memMode != nil {
@@ -105,20 +90,17 @@ func singleKeyTest(rc *db.RedisClient) {
 		fmt.Println("not found 3")
 	}
 
-	//同步到mysql
 	mem.Sync()
-
 }
 
-//多主键
-func multiKeyTest(rc *db.RedisClient) {
+
+func multiKeyTest(rc *RedisClient) {
 	if rc == nil {
 		return
 	}
 
-	mem := db.NewMemMgr(rc, false, "test", "player", []string{"id", "name"})
+	mem := NewMemMgr(rc, false, "test", "player", []string{"id", "name"})
 
-	//查
 	memMode := mem.QueryCheckDBByPKs(2, "ff")
 	if memMode != nil {
 		mem.AddData(memMode, false)
@@ -128,7 +110,6 @@ func multiKeyTest(rc *db.RedisClient) {
 		test := memMode.Data["test"]
 		fmt.Println("info query:", id, name, info, test)
 
-		//改
 		m := mem.UpdateByPks("info", "hihihi~", 2, "ff")
 		if m != nil {
 			id = m.Data["id"]
@@ -150,8 +131,7 @@ func multiKeyTest(rc *db.RedisClient) {
 		}
 	}
 
-	//增
-	memMode = db.NewMemMode()
+	memMode = NewMemMode()
 	memMode.Data["id"] = 2
 	memMode.Data["name"] = "kitty"
 	memMode.Data["info"] = ",,,"
@@ -159,7 +139,6 @@ func multiKeyTest(rc *db.RedisClient) {
 	mem.AddData(memMode, false)
 	mem.SyncMemMode(memMode)
 
-	//查
 	memMode = mem.QueryCheckDBByPK("2:kitty")
 	if memMode != nil {
 		id := memMode.Data["id"]
@@ -169,7 +148,6 @@ func multiKeyTest(rc *db.RedisClient) {
 		fmt.Println("info query:", id, name, info, test)
 	}
 
-	//改
 	m := mem.UpdateCheckDBByPks("info", "hello~", 2, "zz")
 	if m != nil {
 		id := m.Data["id"]
@@ -180,7 +158,6 @@ func multiKeyTest(rc *db.RedisClient) {
 		mem.SyncMemMode(m)
 	}
 
-	//删
 	mem.DelDataCheckDBByPKs(2, "zz")
 	memMode = mem.QueryCheckDBByPKs(2, "zz")
 	if memMode != nil {
@@ -191,22 +168,7 @@ func multiKeyTest(rc *db.RedisClient) {
 
 }
 
-func redisTest(rc *db.RedisClient) {
-	if rc == nil {
-		return
-	}
-	rc.Set("a", 3, 5)
-	//rc.Expire("a", 6)
-}
-
-func main() {
-	dbMgr := db.NewMysqlMgr("test", "root", "123456", "localhost:3306")
-	if dbMgr == nil {
-		fmt.Println("create db mgr error")
-		return
-	}
-	defer dbMgr.Close()
-
+func testMgr(dbMgr *DBMgr) {
 	dbMgr.Query("user", func(rows *sql.Rows) {
 		if rows == nil {
 			return
@@ -243,25 +205,43 @@ func main() {
 		}
 
 	})
+}
 
-	pool := db.InitRedisPool("localhost:6379", 3, 0)
-	if pool == nil {
-		fmt.Println("init redis pool error")
+func TestSingle(t *testing.T) {
+	dbMgr := NewDBMgr(DB_type_mysql, "test", "root", "123456", "localhost:3306")
+	if dbMgr == nil {
+		fmt.Println("create db mgr error")
 		return
 	}
+	defer dbMgr.Close()
 
-	rc := db.NewRedisClient(pool)
+	testMgr(dbMgr)
+
+	rc := NewRedisClient("localhost:6379", 3, 0)
 	defer rc.Close()
 
-	//
-	redisTest(rc)
+	singleKeyTest(rc)
+}
 
-	//
-	//singleKeyTest(rc)
+func TestMulti(t *testing.T) {
+	dbMgr := NewDBMgr(DB_type_mysql, "test", "root", "123456", "localhost:3306")
+	if dbMgr == nil {
+		fmt.Println("create db mgr error")
+		return
+	}
+	defer dbMgr.Close()
 
-	//
-	//multiKeyTest(rc)
+	rc := NewRedisClient("localhost:6379", 3, 0)
+	defer rc.Close()
 
+	multiKeyTest(rc)
+}
 
+func TestR(t *testing.T) {
+	rc := NewRedisClient("localhost:6379", 3, 0)
+	defer rc.Close()
 
+	rc.Set("a", 3, 5)
+	//rc.Expire("a", 6)
+	fmt.Println(rc.Get("a"))
 }

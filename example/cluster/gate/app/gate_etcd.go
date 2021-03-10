@@ -6,26 +6,35 @@
 package app
 
 import (
-	"github.com/lightning-go/lightning/conf"
-	"github.com/lightning-go/lightning/logger"
-	"github.com/lightning-go/lightning/etcd"
-	"time"
 	"fmt"
-	"github.com/lightning-go/lightning/example/cluster/common"
-	"github.com/lightning-go/lightning/selector"
 	"strings"
+	"time"
+
+	"github.com/lightning-go/lightning/conf"
+	"github.com/lightning-go/lightning/etcd"
+	"github.com/lightning-go/lightning/example/cluster/common"
+	"github.com/lightning-go/lightning/logger"
+	"github.com/lightning-go/lightning/selector"
 )
 
-func (gs *GateServer) watch() bool {
-	etcdCfg := conf.GetServer("etcd")
-	if etcdCfg == nil {
-		logger.Error("etcd config error")
-		return false
-	}
+func (gs *GateServer) initEtcd() {
+	gs.watch()
+}
 
+func (gs *GateServer) watch() bool {
 	srvCfg := gs.GetCfg()
 	if srvCfg == nil {
 		logger.Errorf("%v config load failed", gs.Name())
+		return false
+	}
+	if len(srvCfg.WatchGroups) == 0 {
+		return false
+	}
+	group := srvCfg.WatchGroups[0]
+
+	etcdCfg := conf.GetServer("etcd")
+	if etcdCfg == nil {
+		logger.Error("etcd config error")
 		return false
 	}
 
@@ -35,7 +44,7 @@ func (gs *GateServer) watch() bool {
 		return false
 	}
 
-	key := fmt.Sprintf("%v/%v", common.ETCD_LOGIC_PATH, srvCfg.WatchGroup)
+	key := fmt.Sprintf("%v/%v/%v/", conf.GetServerName(), common.ETCD_LOGIC_PATH, group)
 	gs.etcdMgr.Watch(key, func(k, v []byte) {
 		sd := &selector.SessionData{}
 		err := common.Unmarshal(v, sd)
@@ -59,7 +68,7 @@ func (gs *GateServer) watch() bool {
 			logger.Errorf("key %v error", key)
 			return
 		}
-		key = key[idx + 1:]
+		key = key[idx+1:]
 		gs.serveSelector.DelRemoteData(key)
 
 		logger.Debugf("watch delete key: %s", key)
@@ -68,4 +77,3 @@ func (gs *GateServer) watch() bool {
 
 	return true
 }
-

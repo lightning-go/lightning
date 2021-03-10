@@ -94,7 +94,7 @@ type ServeObj interface {
 }
 
 type ISession interface {
-	GetServeObj() ServeObj
+	//GetServeObj() ServeObj
 	GetConnId() string
 	GetSessionId() string
 	Close() bool
@@ -102,7 +102,10 @@ type ISession interface {
 	WritePacket(IPacket)
 	WriteData([]byte)
 	WriteDataById(string, []byte)
-	OnService(packet IPacket) bool
+	WritePacketAwait(IPacket) (IPacket, error)
+	WriteDataAwait([]byte) (IPacket, error)
+	WriteDataByIdAwait(string, []byte) (IPacket, error)
+	OnService(ISession, IPacket) bool
 	SetContext(key, value interface{})
 	GetContext(key interface{}) interface{}
 	SetPacket(IPacket)

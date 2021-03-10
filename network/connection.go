@@ -6,37 +6,38 @@
 package network
 
 import (
+	"context"
 	"net"
+	"sync/atomic"
+
 	"github.com/lightning-go/lightning/defs"
-	"github.com/satori/go.uuid"
 	"github.com/lightning-go/lightning/logger"
 	"github.com/lightning-go/lightning/module"
-	"sync/atomic"
 	"github.com/lightning-go/lightning/utils"
-	"context"
+	uuid "github.com/satori/go.uuid"
 )
 
 type Connection struct {
-	connId                string
-	conn                  net.Conn
-	codec                 defs.ICodec
-	ioModule              defs.IIOModule
-	connCallback          defs.ConnCallback
-	msgCallback           defs.MsgCallback
-	closeCallback         defs.CloseCallback
-	writeComplete         defs.WriteCompleteCallback
-	authCallback          defs.AuthorizedCallback
-	isClosed              int32
-	isAuthorized          bool
-	ctx                   context.Context
+	connId        string
+	conn          net.Conn
+	codec         defs.ICodec
+	ioModule      defs.IIOModule
+	connCallback  defs.ConnCallback
+	msgCallback   defs.MsgCallback
+	closeCallback defs.CloseCallback
+	writeComplete defs.WriteCompleteCallback
+	authCallback  defs.AuthorizedCallback
+	isClosed      int32
+	isAuthorized  bool
+	ctx           context.Context
 }
 
 func NewConnection(conn net.Conn) *Connection {
-	id, err := uuid.NewV4()
-	if err != nil {
-		logger.Error(err)
-		return nil
-	}
+	id := uuid.NewV4()
+	//if id == nil {
+	//	logger.Error("uuid nil")
+	//	return nil
+	//}
 
 	c := &Connection{
 		connId:       id.String(),
@@ -166,7 +167,6 @@ func (c *Connection) WriteComplete() {
 		c.writeComplete(c)
 	}
 }
-
 
 func (c *Connection) write(packet defs.IPacket, await bool) (defs.IPacket, error) {
 	if c.IsClosed() {

@@ -1,4 +1,31 @@
 {
+  "server_id": "1",
+  "server_name": "cluster_server",
+
+  "log": {
+    "center": {
+      "logLevel": "trace",
+      "logPath": "./logs/center.log",
+      "maxAge": -1,
+      "rotationTime": 1440
+    },
+
+    "logic": {
+      "logLevel": "trace",
+      "logPath": "./logs/logic.log",
+      "maxAge": -1,
+      "rotationTime": 1440
+    },
+
+    "gate": {
+      "logLevel": "trace",
+      "logPath": "./logs/gate.log",
+      "maxAge": -1,
+      "rotationTime": 1440
+    }
+
+  },
+
   "servers": {
     "etcd": {
       "hostList": [
@@ -13,49 +40,25 @@
       "port": 22001,
       "maxConn": 3000,
       "remotes": [],
-      "log": {
-        "default": {
-          "logLevel": "trace",
-          "logPath": "./logs/gate.log",
-          "maxAge": -1,
-          "rotationTime": 1440
-        }
-      },
-      "WatchGroup": "1"
+      "watchGroups": ["logic"]
     },
 
     "logic": {
-      "group": "1",
+      "group": "logic",
       "name": "logic",
       "host": "127.0.0.1",
       "port": 23001,
       "maxConn": 3000,
-      "remotes": ["center"],
-      "log": {
-        "default": {
-          "logLevel": "trace",
-          "logPath": "./logs/logic1.log",
-          "maxAge": -1,
-          "rotationTime": 1440
-        }
-      }
+      "remotes": ["center"]
     },
 
     "logic2": {
-      "group": "1",
+      "group": "logic",
       "name": "logic2",
       "host": "127.0.0.1",
       "port": 23002,
       "maxConn": 3000,
-      "remotes": ["center"],
-      "log": {
-        "default": {
-          "logLevel": "trace",
-          "logPath": "./logs/logic2.log",
-          "maxAge": -1,
-          "rotationTime": 1440
-        }
-      }
+      "remotes": ["center"]
     },
 
     "center": {
@@ -63,15 +66,7 @@
       "host": "127.0.0.1",
       "port": 24001,
       "maxConn": 3000,
-      "remotes": [],
-      "log": {
-        "default": {
-          "logLevel": "trace",
-          "logPath": "./logs/center.log",
-          "maxAge": -1,
-          "rotationTime": 1440
-        }
-      }
+      "remotes": []
     }
 
   }

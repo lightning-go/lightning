@@ -6,15 +6,21 @@
 package app
 
 import (
-	"github.com/lightning-go/lightning/conf"
-	"github.com/lightning-go/lightning/logger"
-	"github.com/lightning-go/lightning/etcd"
-	"time"
 	"fmt"
+	"time"
+
+	"github.com/lightning-go/lightning/conf"
+	"github.com/lightning-go/lightning/etcd"
 	"github.com/lightning-go/lightning/example/cluster/common"
+	"github.com/lightning-go/lightning/example/cluster/core"
+	"github.com/lightning-go/lightning/logger"
 	"github.com/lightning-go/lightning/selector"
 	"github.com/lightning-go/lightning/utils"
 )
+
+func (ls *LogicServer) initEtcd() {
+	ls.registerEtcd()
+}
 
 func (ls *LogicServer) registerEtcd() bool {
 	etcdCfg := conf.GetServer("etcd")
@@ -41,13 +47,13 @@ func (ls *LogicServer) keepOnline() {
 	cfg := ls.GetCfg()
 	group := utils.IF(cfg != nil, cfg.Group, "group").(string)
 
-	key := fmt.Sprintf("%v/%v/%v", common.ETCD_LOGIC_PATH, group, ls.Name())
+	key := fmt.Sprintf("%v/%v/%v/%v", conf.GetServerName(), common.ETCD_LOGIC_PATH, group, ls.Name())
 	name := ls.Name()
 	host := ls.Host()
 
 	go func() {
 		for {
-			weight := int(ls.GetSessionCount())
+			weight := int(core.GetClientCount())
 			sd := &selector.SessionData{
 				Host:   host,
 				Name:   name,

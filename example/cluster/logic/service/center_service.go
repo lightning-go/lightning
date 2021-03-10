@@ -6,8 +6,8 @@
 package service
 
 import (
-	"github.com/lightning-go/lightning/defs"
 	"github.com/lightning-go/lightning/example/cluster/msg"
+	"github.com/lightning-go/lightning/example/cluster/core"
 )
 
 type CenterService struct {
@@ -15,7 +15,7 @@ type CenterService struct {
 }
 
 
-func (cs *CenterService) Test3(session defs.ISession, req *msg.MsgTestCenterAck, ack *msg.MsgTestCenterAck) int {
+func (cs *CenterService) Test3(client *core.Client, req *msg.MsgTestCenterAck, ack *msg.MsgTestCenterAck) int {
 	ack.Result = req.Result + 200
 	return msg.RESULT_OK
 }

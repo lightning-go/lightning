@@ -16,6 +16,8 @@ import (
 	"github.com/lightning-go/lightning/example/cluster/logic/service"
 	"github.com/lightning-go/lightning/example/cluster/common"
 	"github.com/lightning-go/lightning/utils"
+	"github.com/lightning-go/lightning/conf"
+	"github.com/lightning-go/lightning/example/cluster/core"
 )
 
 type LogicServer struct {
@@ -25,27 +27,38 @@ type LogicServer struct {
 }
 
 func NewLogicServer(name, confPath string) *LogicServer {
-	gs := &LogicServer{
+	ls := &LogicServer{
 		Server:        network.NewServer(name, confPath),
 		centerService: utils.NewServiceFactory(),
 	}
-	gs.init()
-	gs.initRemoteCenter()
-	return gs
+	ls.init()
+	return ls
 }
 
 func (ls *LogicServer) init() {
+	ls.initLog()
+
 	ls.SetCodec(&module.HeadCodec{})
 	ls.SetAuthorizedCallback(ls.onAuthorized)
 	ls.SetMsgCallback(ls.onMsg)
 	ls.SetDisConnCallback(ls.onDisConn)
+
 	ls.RegisterService(service.NewLogicService(ls))
 	ls.centerService.Register(&service.CenterService{})
-	ls.registerEtcd()
+
+	ls.initEtcd()
+	ls.initRemoteCenter()
+}
+
+func (ls *LogicServer) initLog() {
+	logConf := conf.GetLogConf("logic")
+	if logConf != nil {
+		logger.InitLog(logConf.LogLevel, logConf.MaxAge, logConf.RotationTime, logConf.LogPath)
+	}
 }
 
 func (ls *LogicServer) onDisConn(conn defs.IConnection) {
-
+	core.DelClientByConnId(conn.GetId())
 }
 
 func (ls *LogicServer) onAuthorized(conn defs.IConnection, packet defs.IPacket) bool {
@@ -66,7 +79,7 @@ func (ls *LogicServer) onMsg(conn defs.IConnection, packet defs.IPacket) {
 		return
 	}
 
-	ls.OnSessionService(conn, packet)
+	ls.OnClientService(conn, packet)
 }
 
 func (ls *LogicServer) checkMsgStatus(conn defs.IConnection, packet defs.IPacket) bool {
@@ -78,9 +91,19 @@ func (ls *LogicServer) checkMsgStatus(conn defs.IConnection, packet defs.IPacket
 
 	if status == msg.RESULT_DISCONN {
 		ls.SendToCenter(packet)
-		ls.DelSession(sessionId)
+		core.DelClient(sessionId)
 		return true
 	}
 
 	return false
+}
+
+func (ls *LogicServer) OnClientService(conn defs.IConnection, packet defs.IPacket) {
+	sessionId := packet.GetSessionId()
+	client := core.CheckAddClient(conn, sessionId, ls.OnServiceHandle, true)
+	if client == nil {
+		logger.Errorf("session nil %v", sessionId)
+		return
+	}
+	client.OnService(client, packet)
 }
