@@ -6,11 +6,11 @@
 package main
 
 import (
+	"fmt"
 	"flag"
 	"github.com/lightning-go/lightning/network"
-	"fmt"
 	"github.com/lightning-go/lightning/defs"
-	"lightning/common/util"
+	"github.com/lightning-go/lightning/utils"
 	"github.com/lightning-go/lightning/logger"
 )
 
@@ -31,7 +31,7 @@ func main() {
 	srv.SetConnCallback(func(conn defs.IConnection) {
 		logger.Tracef("%v server %v <- %v is %v",
 			srv.Name(), conn.LocalAddr(), conn.RemoteAddr(),
-			util.IF(conn.IsClosed(), "down", "up"))
+			utils.IF(conn.IsClosed(), "down", "up"))
 	})
 	srv.SetMsgCallback(func(conn defs.IConnection, packet defs.IPacket) {
 		logger.Tracef("onMsg: %s", packet.GetData())

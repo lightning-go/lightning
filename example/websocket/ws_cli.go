@@ -7,11 +7,10 @@ package main
 
 import (
 	"flag"
-	"github.com/lightning-go/lightning/network"
 	"fmt"
 	"github.com/lightning-go/lightning/defs"
 	"github.com/lightning-go/lightning/logger"
-	"lightning/common/util"
+	"github.com/lightning-go/lightning/network"
 	"github.com/lightning-go/lightning/utils"
 	"time"
 )
@@ -35,7 +34,7 @@ func main() {
 	client.SetConnCallback(func(conn defs.IConnection) {
 		logger.Tracef("%v %v -> %v is %v\n", client.Name(),
 			conn.LocalAddr(), conn.RemoteAddr(),
-			util.IF(conn.IsClosed(), "down", "up"))
+			utils.IF(conn.IsClosed(), "down", "up"))
 
 		data := utils.NowTimeFormat()
 		client.SendData([]byte(data))
@@ -45,7 +44,7 @@ func main() {
 		logger.Trace("", logger.Fields{"onMsg": string(packet.GetData())})
 
 		time.Sleep(time.Second * 1)
-		data := util.NowTimeFormat()
+		data := utils.NowTimeFormat()
 		client.SendData([]byte(data))
 	})
 

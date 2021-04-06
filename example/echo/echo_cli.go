@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"bufio"
+	"github.com/lightning-go/lightning/example/echo/codec"
 	"os"
 	"github.com/lightning-go/lightning/network"
 	"github.com/lightning-go/lightning/logger"
@@ -20,7 +21,7 @@ import (
 var (
 	host      = flag.String("h", "127.0.0.1", "connect host")
 	port      = flag.Int("p", 21000, "connect port")
-	codecType = flag.Int("c", 0, "codec type: 1 stream, 2 head")
+	codecType = flag.Int("c", 1, "codec type: 1 stream, 2 head")
 )
 
 
@@ -54,18 +55,18 @@ func createClient(addr string, codec defs.ICodec, waitInput chan bool) *network.
 func main() {
 	flag.Parse()
 
-	var codec defs.ICodec = nil
+	var c defs.ICodec = nil
 	switch *codecType {
 	case 1:
-		codec = module.NewStreamCodec()
+		c = module.NewStreamCodec()
 	case 2:
-		codec = module.NewHeadCodec()
+		c = codec.NewHeadCodec()
 	}
 
 	waitInput := make(chan bool, 1)
 	addr := fmt.Sprintf("%v:%v", *host, *port)
 
-	client := createClient(addr, codec, waitInput)
+	client := createClient(addr, c, waitInput)
 	if client == nil {
 		fmt.Println("create client failed")
 		return
