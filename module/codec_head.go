@@ -6,6 +6,7 @@
 package module
 
 import (
+	"encoding/binary"
 	"github.com/lightning-go/lightning/defs"
 )
 
@@ -31,8 +32,8 @@ func (hc *HeadCodec) Init(conn defs.IConnection) bool {
 		return false
 	}
 
-	hc.dec = NewDecoder(c)
-	hc.enc = NewEocode(c)
+	hc.dec = NewDecoder(c, binary.BigEndian)
+	hc.enc = NewEncode(c, binary.BigEndian)
 
 	return true
 }

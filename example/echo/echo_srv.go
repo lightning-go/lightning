@@ -11,6 +11,7 @@ import (
 	"github.com/lightning-go/lightning/logger"
 	"github.com/lightning-go/lightning/utils"
 	"github.com/lightning-go/lightning/module"
+	"github.com/lightning-go/lightning/example/echo/codec"
 	"flag"
 	"fmt"
 	"github.com/lightning-go/lightning/conf"
@@ -24,12 +25,12 @@ var (
 func main() {
 	flag.Parse()
 
-	var codec defs.ICodec = nil
+	var c defs.ICodec = nil
 	switch *codecType {
 	case 1:
-		codec = module.NewStreamCodec()
+		c = module.NewStreamCodec()
 	case 2:
-		codec = module.NewHeadCodec()
+		c = codec.NewHeadCodec()
 	}
 
 	//
@@ -51,7 +52,7 @@ func main() {
 		logger.Tracef("%v exited", srv.Name())
 	})
 
-	srv.SetCodec(codec)
+	srv.SetCodec(c)
 	srv.Serve()
 
 	//

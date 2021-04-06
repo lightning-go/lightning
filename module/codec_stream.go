@@ -6,6 +6,7 @@
 package module
 
 import (
+	"encoding/binary"
 	"github.com/lightning-go/lightning/defs"
 )
 
@@ -32,8 +33,8 @@ func (sc *StreamCodec) Init(conn defs.IConnection) bool {
 		return false
 	}
 
-	sc.dec = NewDecoder(c)
-	sc.enc = NewEocode(c)
+	sc.dec = NewDecoder(c, binary.BigEndian)
+	sc.enc = NewEncode(c, binary.BigEndian)
 
 	sc.buff = make([]byte, DefaultBufferSize)
 	return true
