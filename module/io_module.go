@@ -187,7 +187,7 @@ func (ioModule *IOModule) WriteAwait(packet defs.IPacket) (response defs.IPacket
 	call.Done = make(chan *RpcCall, 1)
 
 	ioModule.pending.Store(seq, call)
-	err = ioModule.writeHandle(packet)
+	err = ioModule.codec.Write(packet)
 	if err != nil {
 		logger.Error(err)
 		iCall, ok := ioModule.pending.Load(seq)
@@ -224,54 +224,73 @@ func (ioModule *IOModule) Write(packet defs.IPacket) {
 
 func (ioModule *IOModule) enableWrite() {
 	go func() {
-		defer func() {
-			if err := recover(); err != nil {
-				logger.Error(err)
-				trackBack := string(debug.Stack())
-				logger.Error(trackBack)
-			}
-		}()
-
-		for packet := range ioModule.writeQueue {
-			if packet == nil {
-				continue
-			}
-			err := ioModule.writeHandle(packet)
-			if err != nil {
-				logger.Error(err)
-				break
-			}
-			if len(ioModule.writeQueue) == 0 {
-				ioModule.conn.WriteComplete()
-			}
+		quit := false
+		for !quit {
+			quit = ioModule.writeHandle()
 		}
-
+		logger.Tracef("ioModule write exit, %v", ioModule.conn.GetId())
 	}()
 }
 
 func (ioModule *IOModule) enableRead() {
 	go func() {
-		defer func() {
-			if err := recover(); err != nil {
-				logger.Error(err)
-				trackBack := string(debug.Stack())
-				logger.Error(trackBack)
-			}
-		}()
+		quit := false
+		for !quit {
+			quit = ioModule.readHandle()
+		}
+		logger.Tracef("ioModule read exit, %v", ioModule.conn.GetId())
+	}()
 
-	QUIT:
-		for {
-			select {
-			case <-ioModule.readClose:
-				break QUIT
-			default:
-				packet, err := ioModule.readHandle()
-				if err != nil {
-					if err != io.EOF && err != ErrConnClosed {
-						logger.Error(err)
-					}
-					break QUIT
+}
+
+func (ioModule *IOModule) writeHandle() bool {
+	defer func() {
+		if err := recover(); err != nil {
+			logger.Error(err)
+			trackBack := string(debug.Stack())
+			logger.Errorf("%v", trackBack)
+		}
+	}()
+
+	for packet := range ioModule.writeQueue {
+		if packet == nil {
+			continue
+		}
+		err := ioModule.codec.Write(packet)
+		if err != nil {
+			logger.Error(err)
+			break
+		}
+		if len(ioModule.writeQueue) == 0 {
+			ioModule.conn.WriteComplete()
+		}
+	}
+	return true
+}
+
+func (ioModule *IOModule) readHandle() bool {
+	defer func() {
+		if err := recover(); err != nil {
+			logger.Error(err)
+			trackBack := string(debug.Stack())
+			logger.Errorf("%v", trackBack)
+		}
+	}()
+
+	quit := false
+	for !quit {
+		select {
+		case <-ioModule.readClose:
+			quit = true
+		default:
+			packet, err := ioModule.codec.Read()
+			if err != nil {
+				if err != io.EOF && err != ErrConnClosed {
+					logger.Error(err)
 				}
+				quit = true
+			}
+			if !quit {
 				if packet == nil {
 					continue
 				}
@@ -281,29 +300,11 @@ func (ioModule *IOModule) enableRead() {
 				ioModule.conn.ReadPacket(packet)
 			}
 		}
-		ioModule.pendDone()
-		ioModule.Close()
-	}()
+	}
+
+	ioModule.pendDone()
+	ioModule.Close()
+	return quit
 }
 
-func (ioModule *IOModule) writeHandle(packet defs.IPacket) error {
-	defer func() {
-		if err := recover(); err != nil {
-			logger.Error(err)
-			trackBack := string(debug.Stack())
-			logger.Errorf("%v", trackBack)
-		}
-	}()
-	return ioModule.codec.Write(packet)
-}
 
-func (ioModule *IOModule) readHandle() (defs.IPacket, error) {
-	defer func() {
-		if err := recover(); err != nil {
-			logger.Error(err)
-			trackBack := string(debug.Stack())
-			logger.Errorf("%v", trackBack)
-		}
-	}()
-	return ioModule.codec.Read()
-}
