@@ -7,6 +7,7 @@ package etcd
 
 import (
 	"github.com/coreos/etcd/clientv3"
+	"runtime/debug"
 	"time"
 	"github.com/lightning-go/lightning/logger"
 	"context"
@@ -169,41 +170,70 @@ func (e *Etcd) Watch(key string, putCallback, delCallback func(k, v []byte)) {
 	}
 
 	go func(key string) {
-		watchStartRevision := resp.Header.Revision + 1
-		watchChan := e.watcher.Watch(context.TODO(), key,
-			clientv3.WithPrefix(), clientv3.WithRev(watchStartRevision))
-
 		for {
-			select {
-			case watchResp := <-watchChan:
-				if watchResp.Events != nil {
-					for _, watchEvent := range watchResp.Events {
-						if watchEvent == nil {
-							continue
+			e.watch(key, resp, putCallback, delCallback)
+		}
+	}(key)
+
+}
+
+func (e *Etcd) watch(key string, resp *clientv3.GetResponse, putCallback, delCallback func(k, v []byte)) {
+	defer func() {
+		if err := recover(); err != nil {
+			logger.Error(err)
+			trackBack := string(debug.Stack())
+			logger.Errorf("%v", trackBack)
+		}
+	}()
+	
+	watchStartRevision := resp.Header.Revision + 1
+	watchChan := e.watcher.Watch(context.TODO(), key,
+		clientv3.WithPrefix(), clientv3.WithRev(watchStartRevision))
+
+	for {
+		select {
+		case watchResp := <-watchChan:
+			if watchResp.Events != nil {
+				for _, watchEvent := range watchResp.Events {
+					if watchEvent == nil {
+						continue
+					}
+					we := watchEvent
+					switch we.Type {
+					case mvccpb.PUT:
+						if putCallback != nil {
+							putCallback(we.Kv.Key, we.Kv.Value)
 						}
-						we := watchEvent
-						switch we.Type {
-						case mvccpb.PUT:
-							if putCallback != nil {
-								putCallback(we.Kv.Key, we.Kv.Value)
-							}
-						case mvccpb.DELETE:
-							if delCallback != nil {
-								delCallback(we.Kv.Key, we.Kv.Value)
-							}
+					case mvccpb.DELETE:
+						if delCallback != nil {
+							delCallback(we.Kv.Key, we.Kv.Value)
 						}
 					}
 				}
 			}
 		}
-	}(key)
-
+	}
 }
 
 func (e *Etcd) KeepOnlineEx(key, value string, ttl int64) {
 	if ttl <= 0 {
 		return
 	}
+	go func() {
+		for {
+			e.keepOnlineEx(key, value, ttl)
+		}
+	}()
+}
+
+func (e *Etcd) keepOnlineEx(key, value string, ttl int64) {
+	defer func() {
+		if err := recover(); err != nil {
+			logger.Error(err)
+			trackBack := string(debug.Stack())
+			logger.Errorf("%v", trackBack)
+		}
+	}()
 
 	var (
 		err            error
@@ -260,14 +290,28 @@ func (e *Etcd) KeepOnline(ttl int64, callback func()(string, string, bool)) {
 		return
 	}
 	go func() {
-		for {
-			key, value, ok := callback()
-			if !ok {
-				goto RETRY
-			}
-			e.Put(key, value, ttl)
-		RETRY:
-			time.Sleep(time.Second * 1)
-		}
+		e.keepOnline(ttl, callback)
 	}()
 }
+
+func (e *Etcd) keepOnline(ttl int64, callback func()(string, string, bool)) {
+	defer func() {
+		if err := recover(); err != nil {
+			logger.Error(err)
+			trackBack := string(debug.Stack())
+			logger.Errorf("%v", trackBack)
+		}
+	}()
+
+	for {
+		key, value, ok := callback()
+		if !ok {
+			goto RETRY
+		}
+		e.Put(key, value, ttl)
+	RETRY:
+		time.Sleep(time.Second * 1)
+	}
+}
+
+
