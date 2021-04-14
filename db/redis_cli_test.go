@@ -6,8 +6,16 @@ import (
 	"time"
 )
 
+
+var (
+	redisAddr = "127.0.0.1:6379"
+	redisMaxIdle = 1
+	redisMaxActive = 0
+)
+
+
 func TestSet(t *testing.T) {
-	rc := NewRedisClient("127.0.0.1:6379", 1, 0)
+	rc := NewRedisClient(redisAddr, redisMaxIdle, redisMaxActive)
 	defer rc.Close()
 
 	key := "test1"
@@ -28,7 +36,7 @@ func TestSet(t *testing.T) {
 }
 
 func TestHSet(t *testing.T) {
-	rc := NewRedisClient("127.0.0.1:6379", 1, 0)
+	rc := NewRedisClient(redisAddr, redisMaxIdle, redisMaxActive)
 	defer rc.Close()
 
 	key := "test3"
@@ -49,7 +57,7 @@ func TestHSet(t *testing.T) {
 }
 
 func TestZAdd(t *testing.T) {
-	rc := NewRedisClient("127.0.0.1:6379", 1, 0)
+	rc := NewRedisClient(redisAddr, redisMaxIdle, redisMaxActive)
 	defer rc.Close()
 
 	key := "test2"
@@ -77,7 +85,7 @@ func TestZAdd(t *testing.T) {
 }
 
 func TestPip(t *testing.T) {
-	rc := NewRedisClient("127.0.0.1:6379", 1, 0)
+	rc := NewRedisClient(redisAddr, redisMaxIdle, redisMaxActive)
 	defer rc.Close()
 
 	test4 := "test4"

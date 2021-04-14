@@ -194,11 +194,13 @@ func (rc *RedisClient) parseZRangeWithScores(v interface{}) [][]string {
 		if err != nil {
 			continue
 		}
-		v2, err := redis.String(value[i + 1], nil)
-		if err != nil {
-			continue
+		if i + 1 < valueLen {
+			v2, err := redis.String(value[i + 1], nil)
+			if err != nil {
+				continue
+			}
+			d = append(d, []string{string(v2), string(v1)})
 		}
-		d = append(d, []string{string(v2), string(v1)})
 	}
 	return d
 }
