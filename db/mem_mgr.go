@@ -39,11 +39,11 @@ var defaultMemModeExPool = sync.Pool{
 	},
 }
 
-func NewMemModeEx() *MemMode {
+func NewMemMode() *MemMode {
 	return defaultMemModeExPool.Get().(*MemMode)
 }
 
-func FreeMemModeEx(v *MemMode) {
+func FreeMemMode(v *MemMode) {
 	if v != nil {
 		defaultMemModeExPool.Put(v)
 	}
@@ -696,7 +696,7 @@ func (mm *MemMgr) putQueue(state int, d interface{}) {
 		mm.enableQueue()
 		mm.queueWait.Wait()
 	}
-	memMode := NewMemModeEx()
+	memMode := NewMemMode()
 	memMode.State = state
 	memMode.Data = d
 	mm.queue.Put(memMode)
@@ -737,7 +737,7 @@ func (mm *MemMgr) enableQueue() {
 					continue
 				}
 				mm.syncMemMode(d.State, d.Data)
-				FreeMemModeEx(d)
+				FreeMemMode(d)
 			}
 		}
 	}()
