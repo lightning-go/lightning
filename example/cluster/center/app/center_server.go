@@ -6,6 +6,7 @@
 package app
 
 import (
+	"fmt"
 	"github.com/lightning-go/lightning/network"
 	"github.com/lightning-go/lightning/module"
 	"github.com/lightning-go/lightning/defs"
@@ -43,7 +44,8 @@ func (cs *CenterServer) init() {
 func (cs *CenterServer) initLog() {
 	logConf := conf.GetLogConf("center")
 	if logConf != nil {
-		logger.InitLog(logConf.LogLevel, logConf.MaxAge, logConf.RotationTime, logConf.LogPath)
+		pathFile := fmt.Sprintf("%s/%s", logConf.LogPath, logConf.LogFile)
+		logger.InitLog(logConf.LogLevel, logConf.MaxAge, logConf.RotationTime, pathFile)
 	}
 }
 

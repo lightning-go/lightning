@@ -6,6 +6,7 @@
 package app
 
 import (
+	"fmt"
 	"github.com/lightning-go/lightning/network"
 	"github.com/lightning-go/lightning/etcd"
 	"github.com/lightning-go/lightning/module"
@@ -53,7 +54,8 @@ func (ls *LogicServer) init() {
 func (ls *LogicServer) initLog() {
 	logConf := conf.GetLogConf("logic")
 	if logConf != nil {
-		logger.InitLog(logConf.LogLevel, logConf.MaxAge, logConf.RotationTime, logConf.LogPath)
+		pathFile := fmt.Sprintf("%s/%s", logConf.LogPath, logConf.LogFile)
+		logger.InitLog(logConf.LogLevel, logConf.MaxAge, logConf.RotationTime, pathFile)
 	}
 }
 

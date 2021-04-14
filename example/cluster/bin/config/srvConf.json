@@ -5,21 +5,31 @@
   "log": {
     "center": {
       "logLevel": "trace",
-      "logPath": "./logs/center.log",
+      "logPath": "./logs",
+      "logFile": "center.log",
       "maxAge": -1,
       "rotationTime": 1440
     },
 
     "logic": {
       "logLevel": "trace",
-      "logPath": "./logs/logic.log",
+      "logPath": "./logs",
+      "logFile": "logic.log",
       "maxAge": -1,
       "rotationTime": 1440
     },
 
     "gate": {
       "logLevel": "trace",
-      "logPath": "./logs/gate.log",
+      "logPath": "./logs",
+      "logFile": "gate.log",
+      "maxAge": -1,
+      "rotationTime": 1440
+    },
+
+    "mem": {
+      "logLevel": "trace",
+      "logPath": "./logs",
       "maxAge": -1,
       "rotationTime": 1440
     }

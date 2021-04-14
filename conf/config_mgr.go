@@ -87,6 +87,7 @@ func GetConfPath(path ...string) string {
 type LogConfig struct {
 	LogLevel     string `json:"logLevel"`
 	LogPath      string `json:"logPath"`
+	LogFile		 string	`json:"logFile"`
 	MaxAge       int    `json:"maxAge"`       //minute, -1 unlimited
 	RotationTime int    `json:"rotationTime"` //minute
 }

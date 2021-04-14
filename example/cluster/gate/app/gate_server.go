@@ -6,6 +6,7 @@
 package app
 
 import (
+	"fmt"
 	"github.com/lightning-go/lightning/network"
 	"github.com/lightning-go/lightning/defs"
 	"github.com/lightning-go/lightning/module"
@@ -60,7 +61,8 @@ func (gs *GateServer) init() {
 func (gs *GateServer) initLog() {
 	logConf := conf.GetLogConf("gate")
 	if logConf != nil {
-		logger.InitLog(logConf.LogLevel, logConf.MaxAge, logConf.RotationTime, logConf.LogPath)
+		pathFile := fmt.Sprintf("%s/%s", logConf.LogPath, logConf.LogFile)
+		logger.InitLog(logConf.LogLevel, logConf.MaxAge, logConf.RotationTime, pathFile)
 	}
 }
 
