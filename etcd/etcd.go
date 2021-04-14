@@ -14,7 +14,6 @@ import (
 	"github.com/coreos/etcd/mvcc/mvccpb"
 )
 
-const etcdLogPath = "./logs/etcd.log"
 
 type Etcd struct {
 	host        []string
@@ -23,7 +22,6 @@ type Etcd struct {
 	kv          clientv3.KV
 	lease       clientv3.Lease
 	watcher     clientv3.Watcher
-	log         *logger.Logger
 }
 
 func NewEtcd(host []string, timeout ...time.Duration) *Etcd {
@@ -31,15 +29,11 @@ func NewEtcd(host []string, timeout ...time.Duration) *Etcd {
 	if len(timeout) > 0 {
 		t = timeout[0]
 	}
+
 	e := &Etcd{
 		host:        host,
 		dialTimeout: t,
-		log:         logger.NewLogger(logger.TRACE),
 	}
-	if e.log == nil {
-		return nil
-	}
-	e.log.SetRotation(time.Hour*24*30, time.Hour*24, etcdLogPath)
 
 	if !e.init() {
 		return nil
@@ -56,25 +50,25 @@ func (e *Etcd) init() bool {
 
 	client, err := clientv3.New(cfg)
 	if err != nil {
-		e.log.Error(err)
+		logger.Error(err)
 		return false
 	}
 
 	kv := clientv3.NewKV(client)
 	if kv == nil {
-		e.log.Error("init etcd kv failed")
+		logger.Error("init etcd kv failed")
 		return false
 	}
 
 	lease := clientv3.NewLease(client)
 	if lease == nil {
-		e.log.Error("init etcd lease failed")
+		logger.Error("init etcd lease failed")
 		return false
 	}
 
 	watcher := clientv3.NewWatcher(client)
 	if watcher == nil {
-		e.log.Error("init etcd watcher failed")
+		logger.Error("init etcd watcher failed")
 		return false
 	}
 
@@ -92,7 +86,7 @@ func (e *Etcd) Get(key string, f func(k, v []byte)) {
 
 	resp, err := e.kv.Get(context.TODO(), key, clientv3.WithPrefix())
 	if err != nil {
-		e.log.Error(err)
+		logger.Error(err)
 		return
 	}
 
@@ -114,20 +108,20 @@ func (e *Etcd) Put(key, value string, ttl ...int64) {
 	if rttl > 0 {
 		lgr, err := e.lease.Grant(context.TODO(), rttl)
 		if err != nil {
-			e.log.Error(err)
+			logger.Error(err)
 			return
 		}
 
 		_, err = e.kv.Put(context.TODO(), key, value, clientv3.WithLease(lgr.ID))
 		if err != nil {
-			e.log.Error(err)
+			logger.Error(err)
 		}
 
 		return
 	}
 	_, err := e.kv.Put(context.TODO(), key, value)
 	if err != nil {
-		e.log.Error(err)
+		logger.Error(err)
 	}
 }
 
@@ -139,7 +133,7 @@ func (e *Etcd) Delete(key string, oldDataCallback ...func(k, v []byte)) {
 
 	resp, err := e.kv.Delete(context.TODO(), key, clientv3.WithPrefix())
 	if err != nil {
-		e.log.Error(err)
+		logger.Error(err)
 		return
 	}
 
@@ -156,7 +150,7 @@ func (e *Etcd) Watch(key string, putCallback, delCallback func(k, v []byte)) {
 
 	resp, err := e.kv.Get(context.TODO(), key, clientv3.WithPrefix())
 	if err != nil {
-		e.log.Error(err)
+		logger.Error(err)
 		return
 	}
 
@@ -247,7 +241,7 @@ func (e *Etcd) keepOnlineEx(key, value string, ttl int64) {
 	for {
 		leaseGrantResp, err = e.lease.Grant(context.TODO(), ttl)
 		if err != nil {
-			e.log.Error(err)
+			logger.Error(err)
 			goto RETRY
 		}
 
@@ -255,14 +249,14 @@ func (e *Etcd) keepOnlineEx(key, value string, ttl int64) {
 
 		keepAliveChan, err = e.lease.KeepAlive(context.TODO(), leaseGrantResp.ID)
 		if err != nil {
-			e.log.Error(err)
+			logger.Error(err)
 			goto RETRY
 		}
 
 		cancelCtx, cancelFunc = context.WithCancel(context.TODO())
 		_, err = e.kv.Put(cancelCtx, key, value, clientv3.WithLease(leaseGrantResp.ID))
 		if err != nil {
-			e.log.Error(err)
+			logger.Error(err)
 			goto RETRY
 		}
 
@@ -286,7 +280,7 @@ func (e *Etcd) keepOnlineEx(key, value string, ttl int64) {
 
 func (e *Etcd) KeepOnline(ttl int64, callback func()(string, string, bool)) {
 	if callback == nil {
-		e.log.Error("callback is nil")
+		logger.Error("callback is nil")
 		return
 	}
 	go func() {

@@ -69,14 +69,16 @@ func NewDBMgr(dbType, dbName, user, pwd, host string) *DBMgr {
 	return dbMgr
 }
 
-func (dbMgr *DBMgr) SetLogLevel(lvKey string) {
-	dbMgr.log.SetLevel(logger.GetLevel(lvKey))
+func (dbMgr *DBMgr) SetLogLevel(lv int) {
+	if dbMgr.log == nil {
+		dbMgr.log = logger.NewLogger(lv)
+	} else {
+		dbMgr.log.SetLevel(lv)
+	}
 }
 
-func (dbMgr *DBMgr) SetLogRotation(maxAge, rotationTime int, pathFile string) {
-	if dbMgr.log == nil {
-		dbMgr.log = logger.NewLogger(logger.TRACE)
-	}
+func (dbMgr *DBMgr) SetLogRotation(lv, maxAge, rotationTime int, pathFile string) {
+	dbMgr.SetLogLevel(lv)
 	dbMgr.log.SetRotation(time.Minute*time.Duration(maxAge), time.Minute*time.Duration(rotationTime), pathFile)
 }
 

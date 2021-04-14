@@ -21,7 +21,6 @@ import (
 )
 
 
-const defaultLogPath = "./logs"
 
 var ConvertTypeError = errors.New("convert type error")
 
@@ -82,8 +81,6 @@ func NewMemMgrEx(rc *RedisClient, initPK bool, dbName, tableName string, pks []s
 		logger.Error("log create failed")
 		return nil
 	}
-	logPath := fmt.Sprintf("%v/mem_%v.log", defaultLogPath, tableName)
-	log.SetRotation(-1, time.Hour*24, logPath)
 
 	mm := &MemMgrEx{
 		rc:           rc,
@@ -156,10 +153,16 @@ func (mm *MemMgrEx) GetPKIncr() int64 {
 	return -1
 }
 
-func (mm *MemMgrEx) setLogRotation(maxAge, rotationTime int, pathFile string) {
+func (mm *MemMgrEx) SetLogLevel(lv int) {
 	if mm.log == nil {
-		mm.log = logger.NewLogger(logger.TRACE)
+		mm.log = logger.NewLogger(lv)
+	} else {
+		mm.log.SetLevel(lv)
 	}
+}
+
+func (mm *MemMgrEx) SetLogRotation(lv, maxAge, rotationTime int, pathFile string) {
+	mm.SetLogLevel(lv)
 	mm.log.SetRotation(time.Minute*time.Duration(maxAge), time.Minute*time.Duration(rotationTime), pathFile)
 }
 
@@ -661,6 +664,7 @@ func (mm *MemMgrEx) enableQueue() {
 		mm.queueWait.Done()
 
 		defer func() {
+			logger.Tracef("disable memMode queue")
 			atomic.StoreInt32(&mm.queueWorking, 0)
 			err := recover()
 			if err != nil {
