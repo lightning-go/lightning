@@ -1,247 +1,147 @@
+/**
+ * Created: 2020/4/2
+ * @author: Jason
+ */
+
 package db
 
 import (
-	"fmt"
-	"strconv"
 	"testing"
-	"database/sql"
+	"fmt"
+	"time"
+	"github.com/jinzhu/gorm"
 )
 
-func singleKeyTest(rc *RedisClient) {
-	if rc == nil {
-		return
-	}
-
-	mem := NewMemMgr(rc, false, "test", "user", []string{"id"}, "name")
-	mem.LoadDB()
-
-	memMode := mem.QueryCheckDBByPK(strconv.Itoa(2))
-	if memMode != nil {
-		id := memMode.Data["id"]
-		name := memMode.Data["name"]
-		remark := memMode.Data["remark"]
-		test := memMode.Data["test"]
-		fmt.Println("query:", id, name, remark, test)
-
-		m := mem.UpdateByPk("2", "name", "jim")
-		id = m.Data["id"]
-		name = m.Data["name"]
-		remark = m.Data["remark"]
-		test = m.Data["test"]
-		fmt.Println("query:", id, name, remark, test)
-		mem.SyncMemMode(m)
-
-		m = mem.UpdateByPk("2", "test", 2.35)
-		id = m.Data["id"]
-		name = m.Data["name"]
-		remark = m.Data["remark"]
-		test = m.Data["test"]
-		fmt.Println("query:", id, name, remark, test)
-		mem.SyncMemMode(m)
-	}
-
-	memMode = mem.QueryCheckDBByIK("name", "jerry")
-	if memMode != nil {
-		id := memMode.Data["id"]
-		name := memMode.Data["name"]
-		remark := memMode.Data["remark"]
-		fmt.Println("query ik[name]:", id, name, remark)
-
-		mem.UpdateByPk("1", "name", "xxx")
-	}
-
-	memMode = NewMemMode()
-	memMode.Data["id"] = 3
-	memMode.Data["name"] = "Jason"
-	memMode.Data["remark"] = 1
-	memMode.Data["test"] = 5.01
-	mem.AddData(memMode, false)
-	mem.SyncMemMode(memMode)
-
-	memMode = NewMemMode()
-	memMode.Data["id"] = 4
-	memMode.Data["name"] = "Toney"
-	memMode.Data["remark"] = 1
-	memMode.Data["test"] = 1.5
-	mem.AddData(memMode, false)
-
-	memMode = mem.QueryCheckDBByPK(strconv.Itoa(3))
-	if memMode != nil {
-		id := memMode.Data["id"]
-		name := memMode.Data["name"]
-		remark := memMode.Data["remark"]
-		test := memMode.Data["test"]
-		fmt.Println("query:", id, name, remark, test)
-	}
-	memMode = mem.QueryCheckDBByPK(strconv.Itoa(4))
-	if memMode != nil {
-		id := memMode.Data["id"]
-		name := memMode.Data["name"]
-		remark := memMode.Data["remark"]
-		test := memMode.Data["test"]
-		fmt.Println("query:", id, name, remark, test)
-	}
-
-	mem.DelDataCheckDBByPK("3")
-	memMode = mem.QueryCheckDBByPK(strconv.Itoa(3))
-	if memMode != nil {
-		fmt.Println("found 3")
-	} else {
-		fmt.Println("not found 3")
-	}
-
-	mem.Sync()
+type User struct {
+	Id     int64   `json:"id"`
+	Name   string  `json:"name"`
+	Remark int     `json:"remark"`
+	Test   float32 `json:"test"`
 }
 
-
-func multiKeyTest(rc *RedisClient) {
-	if rc == nil {
-		return
-	}
-
-	mem := NewMemMgr(rc, false, "test", "player", []string{"id", "name"})
-
-	memMode := mem.QueryCheckDBByPKs(2, "ff")
-	if memMode != nil {
-		mem.AddData(memMode, false)
-		id := memMode.Data["id"]
-		name := memMode.Data["name"]
-		info := memMode.Data["info"]
-		test := memMode.Data["test"]
-		fmt.Println("info query:", id, name, info, test)
-
-		m := mem.UpdateByPks("info", "hihihi~", 2, "ff")
-		if m != nil {
-			id = m.Data["id"]
-			name = m.Data["name"]
-			info = m.Data["info"]
-			test = m.Data["test"]
-			fmt.Println("update query:", id, name, info, test)
-			mem.SyncMemMode(m)
-		}
-
-		m = mem.UpdateByPks("test", "99.66", 2, "ff")
-		if m != nil {
-			id = m.Data["id"]
-			name = m.Data["name"]
-			info = m.Data["info"]
-			test = m.Data["test"]
-			fmt.Println("update query:", id, name, info, test)
-			mem.SyncMemMode(m)
-		}
-	}
-
-	memMode = NewMemMode()
-	memMode.Data["id"] = 2
-	memMode.Data["name"] = "kitty"
-	memMode.Data["info"] = ",,,"
-	memMode.Data["test"] = 23.4
-	mem.AddData(memMode, false)
-	mem.SyncMemMode(memMode)
-
-	memMode = mem.QueryCheckDBByPK("2:kitty")
-	if memMode != nil {
-		id := memMode.Data["id"]
-		name := memMode.Data["name"]
-		info := memMode.Data["info"]
-		test := memMode.Data["test"]
-		fmt.Println("info query:", id, name, info, test)
-	}
-
-	m := mem.UpdateCheckDBByPks("info", "hello~", 2, "zz")
-	if m != nil {
-		id := m.Data["id"]
-		name := m.Data["name"]
-		info := m.Data["info"]
-		test := m.Data["test"]
-		fmt.Println("update query:", id, name, info, test)
-		mem.SyncMemMode(m)
-	}
-
-	mem.DelDataCheckDBByPKs(2, "zz")
-	memMode = mem.QueryCheckDBByPKs(2, "zz")
-	if memMode != nil {
-		fmt.Println("found 2")
-	} else {
-		fmt.Println("not found 2")
-	}
-
+type Player struct {
+	Id   int64   `json:"id"`
+	Name string  `json:"name"`
+	Info string  `json:"info"`
+	Test float32 `json:"test"`
 }
 
-func testMgr(dbMgr *DBMgr) {
-	dbMgr.Query("user", func(rows *sql.Rows) {
-		if rows == nil {
-			return
-		}
+func testSinglePK(rc *RedisClient) {
+	memUser := NewMemMgr(rc, true, "test", "user", []string{"id"})
 
-		columns, err := rows.Columns()
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		columnsLen := len(columns)
+	u := User{}
+	err := memUser.GetData(1, &u)
+	if err == nil {
+		fmt.Println("pk get", u.Id, u.Name, u.Remark, u.Test)
+	}
 
-		scanArgs := make([]interface{}, columnsLen)
-		values := make([]interface{}, columnsLen)
-		for i := range values {
-			scanArgs[i] = &values[i]
-		}
-
-		for rows.Next() {
-			err := rows.Scan(scanArgs...)
-			if err != nil {
-				fmt.Println(err)
-				break
+	id := memUser.GetPKIncr()
+	u = User{}
+	err = memUser.GetData(id, &u)
+	if err == gorm.ErrRecordNotFound {
+		if id > 0 {
+			u := User{
+				Id:     id,
+				Name:   "jason",
+				Remark: 1,
+				Test:   2323.2,
 			}
-
-			for _, v := range values {
-				d, ok := v.([]byte)
-				if !ok {
-					continue
-				}
-				fmt.Printf("%v ", string(d))
+			ok := memUser.AddData(u.Id, &u)
+			if ok {
+				memUser.SetDataIK("name", u.Name, u.Id)
 			}
-			fmt.Println()
 		}
 
+	} else {
+		fmt.Println("pk get", u.Id, u.Name, u.Remark, u.Test)
+	}
+
+	u = User{}
+	err = memUser.GetDataByIK("name", "jason", &u)
+	if err == nil {
+		fmt.Println("ik get", u.Id, u.Name, u.Remark, u.Test)
+
+		oldName := u.Name
+		u.Name = "jason22222"
+		ok := memUser.UpdateData(u.Id, &u)
+		if ok {
+			memUser.SetDataIK("name", u.Name, u.Id)
+			memUser.DelDataIK("name", oldName)
+		}
+	}
+
+	time.Sleep(time.Second * 3)
+	memUser.DelData(1)
+	memUser.DelDataIK("name", "jason22222")
+}
+
+func testMultiPK(rc *RedisClient) {
+	memPlayer := NewMemMgr(rc, false, "test", "player", []string{"id", "name"})
+
+	p := Player{}
+	err := memPlayer.GetDataByMultiPK(map[string]interface{}{
+		"id": 3,
+		"name": "jason",
+	}, &p)
+	if err == gorm.ErrRecordNotFound {
+		u := Player{
+			Id:   3,
+			Name: "jason",
+			Info: "test...",
+			Test: 2323.2,
+		}
+		memPlayer.AddDataByMultiPK(map[string]interface{}{
+			"id": u.Id,
+			"name": u.Name,
+		}, &u)
+
+	} else {
+		fmt.Println("pk get", p.Id, p.Name, p.Info, p.Test)
+
+		p.Test = 1231.1
+		p.Info = "test...modify"
+		memPlayer.UpdateDataByMultiPK(map[string]interface{}{
+			"id": p.Id,
+			"name": p.Name,
+		}, &p)
+
+	}
+
+	err = memPlayer.GetDataByMultiPK(map[string]interface{}{
+		"id": 3,
+		"name": "jason",
+	}, &p)
+	if err == nil {
+		fmt.Println("pk get", p.Id, p.Name, p.Info, p.Test)
+	}
+
+	time.Sleep(time.Second * 3)
+	memPlayer.DelDataByMultiPK(map[string]interface{}{
+		"id": 3,
+		"name": "jason",
 	})
 }
 
-func TestSingle(t *testing.T) {
-	dbMgr := NewDBMgr(DB_type_mysql, "test", "root", "123456", "localhost:3306")
-	if dbMgr == nil {
-		fmt.Println("create db mgr error")
-		return
-	}
+func Test1(t *testing.T) {
+	dbMgr := NewDBMgr(DB_type_mysql, "test", "root", "123456", "127.0.0.1:3306")
 	defer dbMgr.Close()
 
-	testMgr(dbMgr)
-
-	rc := NewRedisClient("localhost:6379", 3, 0)
+	rc := NewRedisClient("127.0.0.1:6379", 1, 0)
 	defer rc.Close()
 
-	singleKeyTest(rc)
+	testSinglePK(rc)
+
+	time.Sleep(time.Second * 3)
 }
 
-func TestMulti(t *testing.T) {
-	dbMgr := NewDBMgr(DB_type_mysql, "test", "root", "123456", "localhost:3306")
-	if dbMgr == nil {
-		fmt.Println("create db mgr error")
-		return
-	}
+func Test2(t *testing.T) {
+	dbMgr := NewDBMgr(DB_type_mysql, "test", "root", "123456", "127.0.0.1:3306")
 	defer dbMgr.Close()
 
-	rc := NewRedisClient("localhost:6379", 3, 0)
+	rc := NewRedisClient("127.0.0.1:6379", 1, 0)
 	defer rc.Close()
 
-	multiKeyTest(rc)
-}
+	testMultiPK(rc)
 
-func TestR(t *testing.T) {
-	rc := NewRedisClient("localhost:6379", 3, 0)
-	defer rc.Close()
-
-	rc.Set("a", 3, 5)
-	//rc.Expire("a", 6)
-	fmt.Println(rc.Get("a"))
+	time.Sleep(time.Second * 3)
 }

@@ -10,12 +10,16 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"database/sql"
-	"github.com/json-iterator/go"
 	"strconv"
+	"sync"
+	"github.com/json-iterator/go"
+	"errors"
+	"github.com/lightning-go/lightning/utils"
+	"sync/atomic"
+	"runtime/debug"
+	"github.com/jinzhu/gorm"
 )
 
-const memLogPath = "./logs/redis.log"
 
 const (
 	MEM_STATE_ORI    = iota
@@ -24,34 +28,49 @@ const (
 	MEM_STATE_DEL
 )
 
-func NewMemMode() *MemMode {
-	return &MemMode{
-		State: MEM_STATE_ORI,
-		Data:  make(map[string]interface{}),
+var ConvertTypeError = errors.New("convert type error")
+
+var defaultMemModeExPool = sync.Pool{
+	New: func() interface{} {
+		return &MemMode{
+			State: MEM_STATE_ORI,
+			Data:  nil,
+		}
+	},
+}
+
+func NewMemModeEx() *MemMode {
+	return defaultMemModeExPool.Get().(*MemMode)
+}
+
+func FreeMemModeEx(v *MemMode) {
+	if v != nil {
+		defaultMemModeExPool.Put(v)
 	}
 }
 
 type MemMode struct {
-	State int                    `json:"state"`
-	Data  map[string]interface{} `json:"data"`
+	State int
+	Data  interface{}
 }
 
 type MemMgr struct {
-	rc        *RedisClient
-	dbName    string
-	tableName string
-	key       string
-	pKey      string
-	pk        string
-	queryPk   string
-	pks       []string
-	iks       []string
-	isPkIncr  bool
-	log       *logger.Logger
-	dbMgr     *DBMgr
+	rc           *RedisClient
+	dbName       string
+	tableName    string
+	key          string
+	pKey         string
+	pk           string
+	pks          []string
+	isPkIncr     bool
+	log          *logger.Logger
+	dbMgr        *DBMgr
+	queue        *utils.SafeQueue
+	queueWorking int32
+	queueWait    sync.WaitGroup
 }
 
-func NewMemMgr(rc *RedisClient, initPK bool, dbName, tableName string, pks []string, iks ...string) *MemMgr {
+func NewMemMgr(rc *RedisClient, initPK bool, dbName, tableName string, pks []string) *MemMgr {
 	if rc == nil {
 		logger.Error("redis client is nil")
 		return nil
@@ -63,42 +82,34 @@ func NewMemMgr(rc *RedisClient, initPK bool, dbName, tableName string, pks []str
 		return nil
 	}
 
-	mm := &MemMgr{
-		rc:        rc,
-		dbName:    dbName,
-		tableName: tableName,
-		key:       fmt.Sprintf("%s:%s", dbName, tableName),
-		pKey:      fmt.Sprintf("%s:%s:pk", dbName, tableName),
-		isPkIncr:  false,
-		log:       logger.NewLogger(logger.TRACE),
-		dbMgr:     GetDB(dbName),
+	log := logger.NewLogger(logger.TRACE)
+	if log == nil {
+		logger.Error("log create failed")
+		return nil
 	}
 
-	if mm.dbMgr == nil {
-		return nil
-	}
-	if mm.log == nil {
-		return nil
+	mm := &MemMgr{
+		rc:           rc,
+		dbName:       dbName,
+		tableName:    tableName,
+		key:          fmt.Sprintf("%s:%s", dbName, tableName),
+		pKey:         fmt.Sprintf("%s:%s:pk", dbName, tableName),
+		pks:          pks,
+		log:          log,
+		dbMgr:        GetDB(dbName),
+		queue:        utils.NewSafeQueue(),
+		queueWorking: 0,
 	}
 
 	n := pksLen - 1
 	var str strings.Builder
-	var str2 strings.Builder
 	for idx, v := range pks {
-		str.WriteString(v)
-		str2.WriteString(v)
+		str.Write([]byte(v))
 		if idx < n {
-			str.WriteString(":")
-			str2.WriteString(",")
+			str.Write([]byte(":"))
 		}
 	}
-	mm.pks = pks
 	mm.pk = str.String()
-	mm.queryPk = str2.String()
-
-	for _, v := range iks {
-		mm.iks = append(mm.iks, v)
-	}
 
 	if initPK && pksLen == 1 {
 		mm.isPkIncr = true
@@ -108,16 +119,17 @@ func NewMemMgr(rc *RedisClient, initPK bool, dbName, tableName string, pks []str
 	return mm
 }
 
-func (mm *MemMgr) SetLogRotation(maxAge, rotationTime time.Duration, pathFile string) {
-	if mm.log == nil {
-		mm.log = logger.NewLogger(logger.TRACE)
-	}
-	mm.log.SetRotation(maxAge, rotationTime, pathFile)
+func (mm *MemMgr) GetTableName() string {
+	return mm.tableName
+}
+
+func (mm *MemMgr) GetDBMgr() *DBMgr {
+	return mm.dbMgr
 }
 
 func (mm *MemMgr) initPKValue() {
 	pkValue := mm.dbMgr.QueryPrimaryKey(mm.pk, mm.tableName)
-	if pkValue == 0 {
+	if pkValue == -1 {
 		return
 	}
 	_, err := mm.rc.Set(mm.pKey, pkValue)
@@ -126,17 +138,7 @@ func (mm *MemMgr) initPKValue() {
 	}
 }
 
-func (mm *MemMgr) Close() {
-	mm.rc.Close()
-}
-
-func (mm *MemMgr) AddIK(iks ...string) {
-	for _, v := range iks {
-		mm.iks = append(mm.iks, v)
-	}
-}
-
-func (mm *MemMgr) PKIncr() interface{} {
+func (mm *MemMgr) pkIncr() interface{} {
 	v, err := mm.rc.Incr(mm.pKey)
 	if err != nil {
 		mm.log.Error("pk value incr failed")
@@ -145,281 +147,357 @@ func (mm *MemMgr) PKIncr() interface{} {
 	return v
 }
 
-func (mm *MemMgr) produceKey() string {
+func (mm *MemMgr) GetPKIncr() int64 {
+	if mm.isPkIncr {
+		Id := mm.pkIncr()
+		if Id == nil {
+			mm.log.Error("get new Id failed")
+			return -1
+		}
+		return Id.(int64)
+	}
+	return -1
+}
+
+func (mm *MemMgr) SetLogLevel(lv int) {
+	if mm.log == nil {
+		mm.log = logger.NewLogger(lv)
+	} else {
+		mm.log.SetLevel(lv)
+	}
+}
+
+func (mm *MemMgr) SetLogRotation(lv, maxAge, rotationTime int, pathFile string) {
+	mm.SetLogLevel(lv)
+	mm.log.SetRotation(time.Minute*time.Duration(maxAge), time.Minute*time.Duration(rotationTime), pathFile)
+}
+
+func (mm *MemMgr) producePriKey(key string) string {
 	var d strings.Builder
-	d.WriteString(mm.dbName)
-	d.WriteString(":")
-	d.WriteString(mm.tableName)
+	d.Write([]byte(mm.key))
+	d.Write([]byte(":"))
+	d.Write([]byte(mm.pk))
+	d.Write([]byte(":"))
+	d.Write([]byte(key))
+	return d.String()
+}
+
+func (mm *MemMgr) produceIKey(ikName, ikValue string) string {
+	var d strings.Builder
+	d.Write([]byte(mm.key))
+	d.Write([]byte(":"))
+	d.Write([]byte(ikName))
+	d.Write([]byte(":"))
+	d.Write([]byte(ikValue))
 	return d.String()
 }
 
 func (mm *MemMgr) produceFieldKey(prefix, key string) string {
 	var d strings.Builder
-	d.WriteString(prefix)
-	d.WriteString(":")
-	d.WriteString(key)
+	d.Write([]byte(prefix))
+	d.Write([]byte(":"))
+	d.Write([]byte(key))
 	return d.String()
 }
 
-func (mm *MemMgr) produceSuffixKey(suffix, key string) string {
-	var d strings.Builder
-	d.WriteString(key)
-	d.WriteString(":")
-	d.WriteString(suffix)
-	return d.String()
-}
-
-func (mm *MemMgr) Get(key string) interface{} {
-	keyName := mm.produceFieldKey(mm.pk, key)
-	v, err := mm.rc.Get(keyName)
-	if err != nil {
-		mm.log.Error(err)
-		return nil
-	}
-	return v
-}
-
-func (mm *MemMgr) MGet(keys ...string) (v []string) {
-	kvLen := len(keys)
-	kvs := make([]interface{}, kvLen)
-	for idx, v := range keys {
-		keyName := mm.produceFieldKey(mm.pk, v)
-		kvs[idx] = keyName
-	}
-
-	v, err := mm.rc.MGet(kvs)
-	if err != nil {
-		mm.log.Error(err)
-		return nil
-	}
-	return v
-}
-
-func (mm *MemMgr) HGet(key string) interface{} {
-	keyName := mm.produceFieldKey(mm.pk, key)
-	v, err := mm.rc.HGet(mm.key, keyName)
-	if err != nil {
-		mm.log.Error(err)
-		return nil
-	}
-	return v
-}
-
-func (mm *MemMgr) HGetIK(ik, key string) interface{} {
-	keyName := mm.produceFieldKey(ik, key)
-	v, err := mm.rc.HGet(mm.key, keyName)
-	if err != nil {
-		mm.log.Error(err)
-		return nil
-	}
-	return v
-}
-
-func (mm *MemMgr) Set(key string, v interface{}, expire ...int64) {
-	keyName := mm.produceFieldKey(mm.pk, key)
-	_, err := mm.rc.Set(keyName, v, expire...)
-	if err != nil {
-		mm.log.Error(err)
-	}
-}
-
-func (mm *MemMgr) MSet(kv map[string]interface{}) {
-	if kv == nil {
-		return
-	}
-	kvs := make([]interface{}, 0)
-	for k, v := range kv {
-		kvs = append(kvs, k, v)
-	}
-	mm.rc.MSet(kvs)
-}
-
-func (mm *MemMgr) HSet(key string, v interface{}) {
-	field := mm.produceFieldKey(mm.pk, key)
-	_, err := mm.rc.HSet(mm.key, field, v)
-	if err != nil {
-		mm.log.Error(err)
-	}
-}
-
-func (mm *MemMgr) HSetIK(ik, key string, v interface{}) {
-	field := mm.produceFieldKey(ik, key)
-	_, err := mm.rc.HSet(mm.key, field, v)
-	if err != nil {
-		mm.log.Error(err)
-	}
-}
-
-func (mm *MemMgr) Del(key string) {
-	keyName := mm.produceFieldKey(mm.pk, key)
-	_, err := mm.rc.Del(keyName)
-	if err != nil {
-		mm.log.Error(err)
-	}
-}
-
-func (mm *MemMgr) HDel(key string) {
-	keyName := mm.produceFieldKey(mm.pk, key)
-	_, err := mm.rc.HDel(mm.key, keyName)
-	if err != nil {
-		mm.log.Error(err)
-	}
-}
-
-func (mm *MemMgr) HDelIK(ik, key string) {
-	keyName := mm.produceFieldKey(ik, key)
-	_, err := mm.rc.HDel(mm.key, keyName)
-	if err != nil {
-		mm.log.Error(err)
-	}
-}
-
-func (mm *MemMgr) existIK(ik string) (int, bool) {
-	for index, data := range mm.iks {
-		if ik == data {
-			return index, true
-		}
-	}
-	return -1, false
-}
-
-func (mm *MemMgr) getSpecialPKValue(keys ...interface{}) string {
+func (mm *MemMgr) produceSpecialKey(keys ...interface{}) string {
 	n := len(keys)
 	if n == 0 {
 		return ""
 	}
-
 	n--
 	var keyStr strings.Builder
 
 	for idx, k := range keys {
-		val := ""
-		switch k.(type) {
-		case string:
-			val = k.(string)
-		case float64:
-			val = fmt.Sprintf("%v", k.(float64))
-		case int:
-			val = strconv.Itoa(k.(int))
-		case int64:
-			val = strconv.FormatInt(k.(int64), 10)
-		default:
+		val, err := mm.convertKey(k)
+		if err != nil {
 			continue
 		}
-
-		keyStr.WriteString(val)
+		keyStr.Write([]byte(val))
 		if idx < n {
-			keyStr.WriteString(":")
+			keyStr.Write([]byte(":"))
 		}
 	}
 
 	return keyStr.String()
 }
 
-func (mm *MemMgr) getPKValue(memMode *MemMode) string {
-	if memMode == nil {
-		return ""
+func (mm *MemMgr) convertKey(v interface{}) (val string, err error) {
+	switch v.(type) {
+	case []byte:
+		val = string(v.([]byte))
+	case string:
+		val = v.(string)
+	case float64:
+		val = fmt.Sprintf("%v", v.(float64))
+	case int:
+		val = strconv.Itoa(v.(int))
+	case int32:
+		val = strconv.Itoa(int(v.(int32)))
+	case int64:
+		val = strconv.FormatInt(v.(int64), 10)
+	default:
+		err = ConvertTypeError
 	}
-	n := len(mm.pks) - 1
-	var s strings.Builder
-	for idx, key := range mm.pks {
-		d, ok := memMode.Data[key]
+	return
+}
+
+func (mm *MemMgr) GetMultiPKValue(keyValMap map[string]interface{}) (string, string) {
+	if keyValMap == nil {
+		return "", ""
+	}
+	n := len(keyValMap)
+	if n == 0 {
+		return "", ""
+	}
+
+	n--
+	idx := 0
+	var keyStr strings.Builder
+	var condStr strings.Builder
+
+	for _, k := range mm.pks {
+		v, ok := keyValMap[k]
 		if !ok {
+			return "", ""
+		}
+		val, err := mm.convertKey(v)
+		if err != nil {
 			continue
 		}
+		keyStr.Write([]byte(val))
 
-		val := ""
-		switch d.(type) {
-		case string:
-			val = d.(string)
-		case float64:
-			val = fmt.Sprintf("%v", d.(float64))
-		case int:
-			val = strconv.Itoa(d.(int))
-		case int64:
-			val = strconv.FormatInt(d.(int64), 10)
-		default:
-			continue
+		cond := mm.GetCond(k, v)
+		if len(cond) > 0 {
+			condStr.Write([]byte(cond))
 		}
 
-		s.WriteString(val)
 		if idx < n {
-			s.WriteString(":")
+			keyStr.Write([]byte(":"))
+			condStr.Write([]byte(" and "))
 		}
+		idx++
 	}
-	return s.String()
+
+	return keyStr.String(), condStr.String()
 }
 
-func (mm *MemMgr) UpdateIKField(key string, srcField, desField interface{}) {
-	_, ok := mm.existIK(key)
-	if !ok {
-		return
+func (mm *MemMgr) GetCond(key string, val interface{}) string {
+	var whereStr strings.Builder
+
+	switch val.(type) {
+	case string:
+		whereStr.Write([]byte(key))
+		whereStr.Write([]byte("="))
+		whereStr.Write([]byte("'"))
+		whereStr.Write([]byte(val.(string)))
+		whereStr.Write([]byte("'"))
+	case float64:
+		whereStr.Write([]byte(key))
+		whereStr.Write([]byte("="))
+		whereStr.Write([]byte(fmt.Sprintf("%v", val.(float64))))
+	case int:
+		whereStr.Write([]byte(key))
+		whereStr.Write([]byte("="))
+		whereStr.Write([]byte(strconv.Itoa(val.(int))))
+	case int64:
+		whereStr.Write([]byte(key))
+		whereStr.Write([]byte("="))
+		whereStr.Write([]byte(strconv.FormatInt(val.(int64), 10)))
 	}
 
-	srvVal, ok := srcField.(string)
-	if !ok {
+	return whereStr.String()
+}
+
+func (mm *MemMgr) Set(key string, v interface{}, expire ...int64) (err error) {
+	keyName := mm.producePriKey(key)
+	_, err = mm.rc.Set(keyName, v, expire...)
+	return err
+}
+
+func (mm *MemMgr) Get(key string) (d interface{}, err error) {
+	keyName := mm.producePriKey(key)
+	d, err = mm.rc.Get(keyName)
+	return
+}
+
+func (mm *MemMgr) MSet(kv map[string]interface{}) (err error) {
+	if kv == nil {
 		return
 	}
-	desVal, ok := desField.(string)
-	if !ok {
+	kvs := make([]interface{}, 0)
+	for k, v := range kv {
+		keyName := mm.producePriKey(k)
+		kvs = append(kvs, keyName, v)
+	}
+	_, err = mm.rc.MSet(kvs)
+	return
+}
+
+func (mm *MemMgr) MGet(keys ...string) (v []string, err error) {
+	kvs := make([]interface{}, 0)
+	for _, v := range keys {
+		keyName := mm.producePriKey(v)
+		kvs = append(kvs, keyName)
+	}
+	v, err = mm.rc.MGet(kvs)
+	return
+}
+
+func (mm *MemMgr) SetIK(ikName, ikValue string, v interface{}) (err error) {
+	keyName := mm.produceIKey(ikName, ikValue)
+	_, err = mm.rc.Set(keyName, v)
+	return
+}
+
+func (mm *MemMgr) GetIK(ikName, ikValue string) (d interface{}, err error) {
+	keyName := mm.produceIKey(ikName, ikValue)
+	d, err = mm.rc.Get(keyName)
+	return
+}
+
+func (mm *MemMgr) HSet(key string, v interface{}) (err error) {
+	field := mm.produceFieldKey(mm.pk, key)
+	_, err = mm.rc.HSet(mm.key, field, v)
+	return
+}
+
+func (mm *MemMgr) HGet(key string, produce ...bool) (d interface{}, err error) {
+	field := key
+	produceKey := true
+	if len(produce) > 0 {
+		produceKey = produce[0]
+	}
+	if produceKey {
+		field = mm.produceFieldKey(mm.pk, key)
+	}
+	d, err = mm.rc.HGet(mm.key, field)
+	return
+}
+
+func (mm *MemMgr) HSetIK(ik, key string, v interface{}) (err error) {
+	field := mm.produceFieldKey(ik, key)
+	_, err = mm.rc.HSet(mm.key, field, v)
+	return
+}
+
+func (mm *MemMgr) HGetIK(ik, key string) (d interface{}, err error) {
+	field := mm.produceFieldKey(ik, key)
+	d, err = mm.rc.HGet(mm.key, field)
+	return
+}
+
+func (mm *MemMgr) Del(key string) (err error) {
+	keyName := mm.producePriKey(key)
+	_, err = mm.rc.Del(keyName)
+	return err
+}
+
+func (mm *MemMgr) HDel(key string) (err error) {
+	field := mm.produceFieldKey(mm.pk, key)
+	_, err = mm.rc.HDel(mm.key, field)
+	return err
+}
+
+func (mm *MemMgr) HDelIK(ik, key string) (err error) {
+	field := mm.produceFieldKey(ik, key)
+	_, err = mm.rc.HDel(mm.key, field)
+	return
+}
+
+func (mm *MemMgr) DelIK(ikName, ikValue string) (err error) {
+	keyName := mm.produceIKey(ikName, ikValue)
+	_, err = mm.rc.Del(keyName)
+	return
+}
+
+func (mm *MemMgr) SetDataIK(ikName string, ikValue, pkValue interface{}) {
+	ikVal, err := mm.convertKey(ikValue)
+	if err != nil {
+		mm.log.Error(err)
 		return
+	}
+	pkVal, err := mm.convertKey(pkValue)
+	if err != nil {
+		mm.log.Error(err)
+		return
+	}
+	mm.SetIK(ikName, ikVal, pkVal)
+}
+
+func (mm *MemMgr) setData(state int, key interface{}, d interface{}, saveDB bool) bool {
+	if d == nil {
+		return false
+	}
+	k, err := mm.convertKey(key)
+	if err != nil {
+		mm.log.Error(err)
+		return false
 	}
 
-	v := mm.HGetIK(key, srvVal)
+	v, err := jsoniter.Marshal(d)
+	if err != nil {
+		mm.log.Error(err)
+		return false
+	}
+
+	if saveDB {
+		mm.putQueue(state, d)
+	}
+
+	err = mm.Set(k, v)
+	if err != nil {
+		mm.log.Error(err)
+		return false
+	}
+
+	return true
+}
+
+func (mm *MemMgr) AddMem(key interface{}, d interface{}) bool {
+	return mm.setData(MEM_STATE_ORI, key, d, false)
+}
+
+func (mm *MemMgr) AddMemByMultiPK(keyValMap map[string]interface{}, d interface{}) bool {
+	keys, _ := mm.GetMultiPKValue(keyValMap)
+	if len(keys) == 0 {
+		return false
+	}
+	return mm.AddMem(keys, d)
+}
+
+func (mm *MemMgr) AddData(key interface{}, d interface{}) bool {
+	return mm.setData(MEM_STATE_NEW, key, d, true)
+}
+
+func (mm *MemMgr) AddDataByMultiPK(keyValMap map[string]interface{}, d interface{}) bool {
+	keys, _ := mm.GetMultiPKValue(keyValMap)
+	if len(keys) == 0 {
+		return false
+	}
+	return mm.AddData(keys, d)
+}
+
+func (mm *MemMgr) UpdateData(key interface{}, d interface{}) bool {
+	return mm.setData(MEM_STATE_UPDATE, key, d, true)
+}
+
+func (mm *MemMgr) UpdateDataByMultiPK(keyValMap map[string]interface{}, d interface{}) bool {
+	keys, _ := mm.GetMultiPKValue(keyValMap)
+	if len(keys) == 0 {
+		return false
+	}
+	return mm.UpdateData(keys, d)
+}
+
+func (mm *MemMgr) getData(key string) ([]byte, error) {
+	v, err := mm.Get(key)
+	if err != nil {
+		mm.log.Error(err)
+		return nil, err
+	}
 	if v == nil {
-		//mm.log.Error("HGET ik field failed", logger.Fields{
-		//	"key":   key,
-		//	"field": srvVal,
-		//})
-		return
-	}
-
-	conn := mm.rc.GetConn()
-	if conn == nil {
-		return
-	}
-
-	keyName := mm.produceFieldKey(key, srvVal)
-	mm.rc.PipeHDel(conn, mm.key, keyName)
-
-	keyName = mm.produceFieldKey(key, desVal)
-	mm.rc.PipeHSet(conn, mm.key, keyName, v)
-
-	mm.rc.PipeEnd(conn)
-	mm.rc.CloseConn(conn)
-}
-
-func (mm *MemMgr) AddAllIK(memMode *MemMode) {
-	if memMode == nil {
-		return
-	}
-	conn := mm.rc.GetConn()
-	if conn == nil {
-		return
-	}
-	pkValue := mm.getPKValue(memMode)
-	if len(pkValue) == 0 {
-		return
-	}
-
-	for _, ik := range mm.iks {
-		for k, v := range memMode.Data {
-			if k != ik {
-				continue
-			}
-			field := mm.produceFieldKey(ik, v.(string))
-			mm.rc.PipeHSet(conn, mm.key, field, pkValue)
-		}
-	}
-
-	mm.rc.PipeEnd(conn)
-	mm.rc.CloseConn(conn)
-}
-
-func (mm *MemMgr) query(key string, isAll bool) *MemMode {
-	v := mm.HGet(key)
-	if v == nil {
-		return nil
+		return nil, gorm.ErrRecordNotFound
 	}
 
 	d, ok := v.([]byte)
@@ -428,726 +506,262 @@ func (mm *MemMgr) query(key string, isAll bool) *MemMode {
 			"key":   key,
 			"value": v,
 		})
-		return nil
+		return nil, ConvertTypeError
 	}
 
-	memMode := NewMemMode()
-	err := jsoniter.Unmarshal(d, memMode)
+	return d, nil
+}
+
+func (mm *MemMgr) GetData(key interface{}, dest interface{}, checkDB ...bool) error {
+	k, err := mm.convertKey(key)
 	if err != nil {
 		mm.log.Error(err)
 		return nil
 	}
 
-	if !isAll && memMode.State == MEM_STATE_DEL {
-		return nil
-	}
-
-	return memMode
-}
-
-func (mm *MemMgr) queryIK(ik, key string, isAll bool) *MemMode {
-	v := mm.HGetIK(ik, key)
-	if v == nil {
-		//mm.log.Trace("mem query failed", logger.Fields{
-		//	"ikey": ik,
-		//	"key":  key,
-		//})
-		return nil
-	}
-	k, ok := v.([]byte)
-	if !ok {
-		mm.log.Error("query key error", logger.Fields{
-			"key": k,
-		})
-	}
-	return mm.query(string(k), isAll)
-}
-
-func (mm *MemMgr) QueryByPKs(keys ...interface{}) *MemMode {
-	key := mm.getSpecialPKValue(keys...)
-	return mm.query(key, false)
-}
-
-func (mm *MemMgr) QueryByPK(key string) *MemMode {
-	return mm.query(key, false)
-}
-
-func (mm *MemMgr) QueryByIK(ik, key string) *MemMode {
-	return mm.queryIK(ik, key, false)
-}
-
-func (mm *MemMgr) QueryCheckDBByPKs(keys ...interface{}) *MemMode {
-	key := mm.getSpecialPKValue(keys...)
-	memMode := mm.QueryByPK(key)
-	if memMode != nil {
-		return memMode
-	}
-	return mm.QueryRowByPKs(mm.pk, keys...)
-}
-
-func (mm *MemMgr) QueryCheckDBByPK(key string) *MemMode {
-	memMode := mm.QueryByPK(key)
-	if memMode != nil {
-		return memMode
-	}
-	return mm.QueryRow(mm.pk, key)
-}
-
-func (mm *MemMgr) QueryCheckDBByIK(ik, key string) *MemMode {
-	memMode := mm.QueryByIK(ik, key)
-	if memMode != nil {
-		return memMode
-	}
-	return mm.QueryRow(ik, key)
-}
-
-func (mm *MemMgr) QueryRowByPKs(field string, values ...interface{}) (memMode *MemMode) {
-	pkLen := len(mm.pks)
-	valLen := len(values)
-	if pkLen != valLen {
-		return nil
-	}
-
-	n := pkLen - 1
-	var valStr strings.Builder
-	for idx, pk := range mm.pks {
-		if idx >= valLen {
-			return nil
+	d, err := mm.getData(k)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			fromDB := true
+			if len(checkDB) > 0 {
+				fromDB = checkDB[0]
+			}
+			if fromDB {
+				cond := mm.GetCond(mm.pk, key)
+				err = mm.dbMgr.QueryRecord(mm.tableName, cond, dest)
+				if err != nil {
+					mm.log.Error(err)
+					return err
+				}
+				mm.setData(MEM_STATE_ORI, k, dest, false)
+			}
 		}
-		valStr.WriteString(pk)
-		valStr.WriteString("=")
-
-		val := values[idx]
-		switch val.(type) {
-		case string:
-			valStr.WriteString("'")
-			valStr.WriteString(val.(string))
-			valStr.WriteString("'")
-		case float64:
-			v := fmt.Sprintf("%v", val.(float64))
-			valStr.WriteString(v)
-		case int:
-			valStr.WriteString(strconv.Itoa(val.(int)))
-		case int64:
-			valStr.WriteString(strconv.FormatInt(val.(int64), 10))
-		default:
-			continue
-		}
-
-		if idx < n {
-			valStr.WriteString(" and ")
-		}
-	}
-	where := valStr.String()
-
-	mm.dbMgr.QueryCond(mm.tableName, where, func(rows *sql.Rows) {
-		memList := mm.LoadRows(rows, true)
-		if memList == nil || len(memList) == 0 {
-			return
-		}
-		memMode = memList[0]
-	})
-	return
-}
-
-func (mm *MemMgr) QueryRow(field, value string) (memMode *MemMode) {
-	where := fmt.Sprintf("%s = '%s'", field, value)
-	mm.dbMgr.QueryCond(mm.tableName, where, func(rows *sql.Rows) {
-		memList := mm.LoadRows(rows, true)
-		if memList == nil || len(memList) == 0 {
-			return
-		}
-		memMode = memList[0]
-	})
-	return
-}
-
-func (mm *MemMgr) LoadDB() (d []*MemMode) {
-	mm.dbMgr.Query(mm.tableName, func(rows *sql.Rows) {
-		d = mm.LoadRows(rows)
-	})
-	return
-}
-
-func (mm *MemMgr) LoadDBCond(where string) (d []*MemMode) {
-	mm.dbMgr.QueryCond(mm.tableName, where, func(rows *sql.Rows) {
-		d = mm.LoadRows(rows)
-	})
-	return
-}
-
-func (mm *MemMgr) LoadRows(rows *sql.Rows, justOne ...bool) []*MemMode {
-	if rows == nil {
-		return nil
+		mm.log.Error(err)
+		return err
 	}
 
-	conn := mm.rc.GetConn()
-	if conn == nil {
-		return nil
-	}
-
-	one := false
-	if len(justOne) > 0 {
-		one = justOne[0]
-	}
-
-	columns, err := rows.Columns()
+	err = jsoniter.Unmarshal(d, dest)
 	if err != nil {
 		mm.log.Error(err)
-		return nil
-	}
-
-	columnsLen := len(columns)
-	scanArgs := make([]interface{}, columnsLen)
-	values := make([]interface{}, columnsLen)
-	for i := range values {
-		scanArgs[i] = &values[i]
-	}
-
-	var memModes []*MemMode = nil
-
-	for rows.Next() {
-		err := rows.Scan(scanArgs...)
-		if err != nil {
-			mm.log.Error(err)
-			return nil
-		}
-
-		memMode := NewMemMode()
-		for k, v := range values {
-			if k >= columnsLen {
-				break
-			}
-			if v == nil {
-				continue
-			}
-			byteValue, ok := v.([]byte)
-			if !ok {
-				continue
-			}
-			key := columns[k]
-			memMode.Data[key] = string(byteValue)
-		}
-
-		keyValue := mm.getPKValue(memMode)
-
-		row, err := jsoniter.Marshal(memMode)
-		if err != nil {
-			mm.log.Error(err)
-			continue
-		}
-
-		field := mm.produceFieldKey(mm.pk, keyValue)
-		mm.rc.PipeHSet(conn, mm.key, field, row)
-
-		for _, ik := range mm.iks {
-			idx, ok := mm.existIK(ik)
-			if !ok || idx >= columnsLen {
-				continue
-			}
-			byteValue, ok := values[idx].([]byte)
-			if !ok {
-				continue
-			}
-			field := mm.produceFieldKey(ik, string(byteValue))
-			mm.rc.PipeHSet(conn, mm.key, field, keyValue)
-		}
-
-		if one {
-			mm.rc.PipeEnd(conn)
-			mm.rc.CloseConn(conn)
-			return []*MemMode{memMode}
-		}
-
-		memModes = append(memModes, memMode)
-	}
-
-	mm.rc.PipeEnd(conn)
-	mm.rc.CloseConn(conn)
-	return memModes
-}
-
-func (mm *MemMgr) updateData(memMode *MemMode) {
-	if memMode == nil {
-		return
-	}
-	v, err := jsoniter.Marshal(memMode)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	pk := mm.getPKValue(memMode)
-	mm.HSet(pk, v)
-}
-
-func (mm *MemMgr) Update(memMode *MemMode, updateState ...bool) {
-	us := true
-	if len(updateState) > 0 && updateState[0] {
-		us = updateState[0]
-	}
-	if us {
-		memMode.State = MEM_STATE_UPDATE
-	}
-	mm.updateData(memMode)
-}
-
-func (mm *MemMgr) UpdateCheckDBByPks(field string, v interface{}, keys ...interface{}) *MemMode {
-	memMode := mm.UpdateByPks(field, v, keys...)
-	if memMode != nil {
-		return memMode
-	}
-	memMode = mm.QueryRowByPKs(mm.pk, keys...)
-	if memMode != nil {
-		key := mm.getSpecialPKValue(keys...)
-		memMode = mm.UpdateByPk(key, field, v)
-		return memMode
+		return err
 	}
 	return nil
 }
 
-func (mm *MemMgr) UpdateByPks(field string, v interface{}, keys ...interface{}) *MemMode {
-	key := mm.getSpecialPKValue(keys...)
-	return mm.UpdateByPk(key, field, v)
-}
-
-func (mm *MemMgr) UpdateByPk(key, field string, v interface{}) *MemMode {
-	memMode := mm.QueryByPK(key)
-	if memMode == nil {
-		//mm.log.Error("key Error\n", logger.Fields{
-		//	"key": key,
-		//})
+func (mm *MemMgr) GetDataByMultiPK(keyValMap map[string]interface{}, dest interface{}, checkDB ...bool) error {
+	keys, cond := mm.GetMultiPKValue(keyValMap)
+	if len(keys) == 0 {
 		return nil
 	}
 
-	value, ok := memMode.Data[field]
-	if !ok {
-		mm.log.Error("field Error\n", logger.Fields{
-			"field": field,
-		})
-		return nil
-	}
-
-	memMode.Data[field] = v
-	memMode.State = MEM_STATE_UPDATE
-	mm.updateData(memMode)
-	mm.UpdateIKField(field, value, v)
-
-	return memMode
-}
-
-func (mm *MemMgr) UpdateByIk(ik, key string, field string, v interface{}) {
-	memMode := mm.QueryByIK(ik, key)
-	if memMode == nil {
-		mm.log.Error("key Error\n", logger.Fields{
-			"key": key,
-		})
-		return
-	}
-
-	value, ok := memMode.Data[field]
-	if !ok {
-		mm.log.Error("field Error\n", logger.Fields{
-			"field": field,
-		})
-		return
-	}
-
-	memMode.Data[field] = v
-	memMode.State = MEM_STATE_UPDATE
-	mm.updateData(memMode)
-	mm.UpdateIKField(field, value, v)
-}
-
-func (mm *MemMgr) AddData(memMode *MemMode, isPKIncrs ...bool) {
-	if memMode == nil {
-		return
-	}
-
-	if mm.isPkIncr {
-		Id := mm.PKIncr()
-		if Id == nil {
-			mm.log.Error("Get new Id failed")
-			return
+	d, err := mm.getData(keys)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			fromDB := true
+			if len(checkDB) > 0 {
+				fromDB = checkDB[0]
+			}
+			if fromDB {
+				err = mm.dbMgr.QueryRecord(mm.tableName, cond, dest)
+				if err != nil {
+					mm.log.Error(err)
+					return err
+				}
+				mm.setData(MEM_STATE_ORI, keys, dest, false)
+			}
 		}
-		newId := Id.(int64)
-		memMode.Data[mm.pk] = newId
+		mm.log.Error(err)
+		return err
 	}
 
-	memMode.State = MEM_STATE_NEW
-
-	v, err := jsoniter.Marshal(memMode)
+	err = jsoniter.Unmarshal(d, dest)
 	if err != nil {
 		mm.log.Error(err)
-		return
+		return err
 	}
 
-	pkValue := mm.getPKValue(memMode)
-	mm.HSet(pkValue, v)
-	mm.AddAllIK(memMode)
+	return nil
 }
 
-func (mm *MemMgr) DelDataCheckDBByPKs(keys ...interface{}) *MemMode {
-	m := mm.DelDataByPKs(keys...)
-	if m == nil {
-		return nil
-	}
-	m.State = MEM_STATE_DEL
-	mm.SyncMemMode(m)
-	return m
-}
-
-func (mm *MemMgr) DelDataByPKs(keys ...interface{}) *MemMode {
-	key := mm.getSpecialPKValue(keys...)
-	return mm.DelDataByPK(key)
-}
-
-func (mm *MemMgr) DelDataCheckDBByPK(key string) *MemMode {
-	m := mm.DelDataByPK(key)
-	if m == nil {
-		return nil
-	}
-	m.State = MEM_STATE_DEL
-	mm.SyncMemMode(m)
-	return m
-}
-
-func (mm *MemMgr) DelDataByPK(key string) *MemMode {
-	memMode := mm.query(key, true)
-	if memMode == nil {
-		//mm.log.Error("key Error\n", logger.Fields{
-		//	"key": key,
-		//})
-		return nil
-	}
-
-	conn := mm.rc.GetConn()
-	if conn == nil {
-		return nil
-	}
-
-	for _, k := range mm.iks {
-		v, ok := memMode.Data[k]
-		if ok {
-			keyName := mm.produceFieldKey(k, v.(string))
-			mm.rc.PipeHDel(conn, mm.key, keyName)
-		}
-	}
-
-	keyName := mm.produceFieldKey(mm.pk, key)
-	mm.rc.PipeHDel(conn, mm.key, keyName)
-
-	mm.rc.PipeEnd(conn)
-	mm.rc.CloseConn(conn)
-
-	return memMode
-}
-
-func (mm *MemMgr) DelDataByIK(ik, key string) {
-	memMode := mm.queryIK(ik, key, true)
-	if memMode == nil {
-		mm.log.Error("key Error\n", logger.Fields{
-			"key": key,
-		})
-		return
-	}
-
-	conn := mm.rc.GetConn()
-	if conn == nil {
-		return
-	}
-
-	for _, k := range mm.iks {
-		v, ok := memMode.Data[k]
-		if ok {
-			keyName := mm.produceFieldKey(k, v.(string))
-			mm.rc.PipeHDel(conn, mm.key, keyName)
-		}
-	}
-
-	keyName := mm.produceFieldKey(mm.pk, key)
-	mm.rc.PipeHDel(conn, mm.key, keyName)
-
-	mm.rc.PipeEnd(conn)
-	mm.rc.CloseConn(conn)
-}
-
-func (mm *MemMgr) DelByIK(ik, key string) {
-	memMode := mm.QueryByIK(ik, key)
-	if memMode == nil {
-		mm.log.Error("key Error\n", logger.Fields{
-			"key": key,
-		})
-		return
-	}
-	memMode.State = MEM_STATE_DEL
-	mm.updateData(memMode)
-}
-
-func (mm *MemMgr) GetAllKeys() []string {
-	v, err := mm.rc.HGetAll(mm.key)
-	if err != nil || v == nil {
+func (mm *MemMgr) GetDataByIK(ikName string, ikValue, dest interface{}) error {
+	ikVal, err := mm.convertKey(ikValue)
+	if err != nil {
 		mm.log.Error(err)
-		return nil
+		return err
+	}
+	d, err := mm.GetIK(ikName, ikVal)
+	if err != nil {
+		mm.log.Error(err)
+		return err
+	}
+	if d == nil {
+		return gorm.ErrRecordNotFound
 	}
 
-	array, ok := v.([]interface{})
+	v, ok := d.([]byte)
 	if !ok {
-		mm.log.Error("get keys type error")
-		return nil
+		mm.log.Error("convert type error", logger.Fields{
+			"ikName": ikName,
+			"ikVal":  ikVal,
+			"value":  d,
+		})
+		return ConvertTypeError
 	}
 
-	keys := make([]string, 0)
-	for _, v := range array {
-		record, ok := v.([]byte)
-		if !ok {
-			continue
-		}
-		pkLen := len(mm.pk) + 1
-		if len(record) < pkLen {
-			continue
-		}
-		recordHead := record[:pkLen]
-		keyHead := fmt.Sprintf("%s:", mm.pk)
-		if !strings.EqualFold(string(recordHead), keyHead) {
-			continue
-		}
-		keys = append(keys, string(record))
+	pk, err := mm.convertKey(v)
+	if err != nil {
+		mm.log.Error(err)
+		return err
+	}
+	d, err = mm.Get(pk)
+	if err != nil {
+		mm.log.Error(err)
+		return err
+	}
+	v, ok = d.([]byte)
+	if !ok {
+		mm.log.Error("convert type error", logger.Fields{
+			"key":   pk,
+			"value": v,
+		})
+		return ConvertTypeError
 	}
 
-	return keys
+	err = jsoniter.Unmarshal(v, dest)
+	if err != nil {
+		mm.log.Error(err)
+		return err
+	}
+
+	return nil
 }
 
-func (mm *MemMgr) Sync() {
-	keys := mm.GetAllKeys()
-	if keys == nil {
-		return
+func (mm *MemMgr) DelData(key interface{}) bool {
+	k, err := mm.convertKey(key)
+	if err != nil {
+		mm.log.Error(err)
+		return false
 	}
 
-	conn := mm.rc.GetConn()
-	if conn == nil {
-		return
+	cond := mm.GetCond(mm.pk, key)
+	if len(cond) > 0 {
+		mm.putQueue(MEM_STATE_DEL, cond)
 	}
 
-	for _, k := range keys {
-		mm.rc.PipeHGet(conn, mm.key, k)
+	err = mm.Del(k)
+	if err != nil {
+		mm.log.Error(err)
+		return false
 	}
-	mm.rc.PipeEnd(conn)
-	count := len(keys)
-
-	result := make([]interface{}, 0)
-	for i := 0; i < count; i++ {
-		v, err := mm.rc.PipeRecv(conn)
-		if err != nil {
-			mm.log.Error(err)
-			continue
-		}
-		result = append(result, v)
-	}
-	mm.rc.CloseConn(conn)
-
-	for _, v := range result {
-		memMode := NewMemMode()
-		err := jsoniter.Unmarshal(v.([]byte), memMode)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		mm.SyncMemMode(memMode)
-	}
-
+	return true
 }
 
-func (mm *MemMgr) SyncMemMode(memMode *MemMode) {
-	if memMode == nil {
-		return
+func (mm *MemMgr) DelDataByMultiPK(keyValMap map[string]interface{}) bool {
+	keys, cond := mm.GetMultiPKValue(keyValMap)
+	if len(keys) == 0 {
+		return false
 	}
 
+	mm.putQueue(MEM_STATE_DEL, cond)
+
+	err := mm.Del(keys)
+	if err != nil {
+		mm.log.Error(err)
+		return false
+	}
+	return true
+}
+
+func (mm *MemMgr) DelDataIK(ikName string, ikValue interface{}) bool {
+	ikVal, err := mm.convertKey(ikValue)
+	if err != nil {
+		mm.log.Error(err)
+		return false
+	}
+	err = mm.DelIK(ikName, ikVal)
+	if err != nil {
+		mm.log.Error(err)
+		return false
+	}
+	return true
+}
+
+func (mm *MemMgr) putQueue(state int, d interface{}) {
+	if d == nil {
+		return
+	}
+	v := atomic.LoadInt32(&mm.queueWorking)
+	if v == 0 {
+		mm.queueWait.Add(1)
+		mm.enableQueue()
+		mm.queueWait.Wait()
+	}
+	memMode := NewMemModeEx()
+	memMode.State = state
+	memMode.Data = d
+	mm.queue.Put(memMode)
+}
+
+func (mm *MemMgr) enableQueue() {
+	go func() {
+		logger.Tracef("enable memMode queue")
+		atomic.StoreInt32(&mm.queueWorking, 1)
+		mm.queueWait.Done()
+
+		defer func() {
+			logger.Tracef("disable memMode queue")
+			atomic.StoreInt32(&mm.queueWorking, 0)
+			err := recover()
+			if err != nil {
+				logger.Error(err)
+				logger.Error(string(debug.Stack()))
+			}
+		}()
+
+		for {
+			var taskList []interface{} = nil
+			mm.queue.Take(&taskList)
+
+			if taskList == nil {
+				continue
+			}
+			for _, t := range taskList {
+				if t == nil {
+					continue
+				}
+				d, ok := t.(*MemMode)
+				if !ok || d == nil {
+					continue
+				}
+				if d.Data == nil {
+					continue
+				}
+				mm.syncMemMode(d.State, d.Data)
+				FreeMemModeEx(d)
+			}
+		}
+	}()
+}
+
+func (mm *MemMgr) syncMemMode(state int, d interface{}) {
+	if d == nil {
+		return
+	}
 	var err error
-	switch memMode.State {
+	switch state {
 	case MEM_STATE_NEW:
-		fields, values := mm.GetInsertFieldAndValue(memMode)
-		err = mm.dbMgr.Insert(mm.tableName, fields, values)
+		err = mm.dbMgr.NewRecord(d)
 	case MEM_STATE_UPDATE:
-		fields, where := mm.GetUpdateFieldAndValue(memMode)
-		err = mm.dbMgr.Update(mm.tableName, fields, where)
+		err = mm.dbMgr.SaveRecord(d)
 	case MEM_STATE_DEL:
-		//where := fmt.Sprintf("%s = %s", mm.pk, memMode.Data[mm.pk].(string))
-		where := mm.GetDeleteCond(memMode)
-		err = mm.dbMgr.Delete(mm.tableName, where)
-	}
-
-	if err == nil {
-		if memMode.State != MEM_STATE_DEL {
-			memMode.State = MEM_STATE_ORI
-			mm.updateData(memMode) //fix
-		} else {
-			key := mm.getPKValue(memMode)
-			mm.DelDataByPK(key)
+		cond, ok := d.(string)
+		if ok {
+			err = mm.dbMgr.Delete(mm.tableName, cond)
 		}
-	} else {
+	}
+	if err != nil {
 		mm.log.Error(err)
 	}
-
 }
 
-func (mm *MemMgr) GetInsertFieldAndValue(memMode *MemMode) (fields, values string) {
-	if memMode == nil {
-		return
-	}
 
-	dataLen := len(memMode.Data)
-	index := 0
-	var fieldStr strings.Builder
-	var valueStr strings.Builder
-
-	for k, v := range memMode.Data {
-		fieldStr.WriteString(k)
-
-		switch v.(type) {
-		case string:
-			valueStr.WriteString("'")
-			valueStr.WriteString(v.(string))
-			valueStr.WriteString("'")
-		case int:
-			valueStr.WriteString(strconv.Itoa(v.(int)))
-		case int64:
-			valueStr.WriteString(strconv.FormatInt(v.(int64), 10))
-		case float64:
-			val := fmt.Sprintf("%v", v.(float64))
-			valueStr.WriteString(val)
-		case map[string]interface{}:
-			d, err := jsoniter.Marshal(v)
-			if err != nil {
-				valueStr.WriteString("'{}'")
-			} else {
-				valueStr.WriteString("'")
-				valueStr.WriteString(string(d))
-				valueStr.WriteString("'")
-			}
-		default:
-			valueStr.WriteString("'{}'")
-		}
-
-		if index+1 < dataLen {
-			fieldStr.WriteString(", ")
-			valueStr.WriteString(",")
-		}
-		index++
-	}
-
-	fields = fieldStr.String()
-	values = valueStr.String()
-	return
-}
-
-func (mm *MemMgr) GetUpdateFieldAndValue(memMode *MemMode) (fields, where string) {
-	if memMode == nil {
-		return
-	}
-
-	dataLen := len(memMode.Data)
-	index := 0
-	var fieldStr strings.Builder
-
-	for k, v := range memMode.Data {
-		switch v.(type) {
-		case string:
-			fieldStr.WriteString(k)
-			fieldStr.WriteString("=")
-			fieldStr.WriteString("'")
-			fieldStr.WriteString(v.(string))
-			fieldStr.WriteString("'")
-		case float64:
-			fieldStr.WriteString(k)
-			fieldStr.WriteString("=")
-			val := fmt.Sprintf("%v", v.(float64))
-			fieldStr.WriteString(val)
-		case int:
-			fieldStr.WriteString(k)
-			fieldStr.WriteString("=")
-			fieldStr.WriteString(strconv.Itoa(v.(int)))
-		case int64:
-			fieldStr.WriteString(k)
-			fieldStr.WriteString("=")
-			fieldStr.WriteString(strconv.FormatInt(v.(int64), 10))
-		case map[string]interface{}:
-			d, err := jsoniter.Marshal(v)
-			if err != nil {
-				fieldStr.WriteString(k)
-				fieldStr.WriteString("=")
-				fieldStr.WriteString("'{}'")
-			} else {
-				fieldStr.WriteString(k)
-				fieldStr.WriteString("=")
-				fieldStr.WriteString("'")
-				fieldStr.WriteString(string(d))
-				fieldStr.WriteString("'")
-			}
-		default:
-			fieldStr.WriteString(k)
-			fieldStr.WriteString("=")
-			fieldStr.WriteString("'{}'")
-		}
-
-		if index+1 < dataLen {
-			fieldStr.WriteString(", ")
-		}
-		index++
-	}
-
-	fields = fieldStr.String()
-	where = mm.GetPKCond(memMode)
-	return
-}
-
-func (mm *MemMgr) GetPKCond(memMode *MemMode) string {
-	if memMode == nil {
-		return ""
-	}
-
-	var whereStr strings.Builder
-	pkLen := len(mm.pks) - 1
-
-	for idx, key := range mm.pks {
-		d, ok := memMode.Data[key]
-		if !ok {
-			continue
-		}
-
-		switch d.(type) {
-		case string:
-			whereStr.WriteString(key)
-			whereStr.WriteString("=")
-			whereStr.WriteString("'")
-			whereStr.WriteString(d.(string))
-			whereStr.WriteString("'")
-		case float64:
-			whereStr.WriteString(key)
-			whereStr.WriteString("=")
-			whereStr.WriteString(fmt.Sprintf("%v", d.(float64)))
-		case int:
-			whereStr.WriteString(key)
-			whereStr.WriteString("=")
-			whereStr.WriteString(strconv.Itoa(d.(int)))
-		case int64:
-			whereStr.WriteString(key)
-			whereStr.WriteString("=")
-			whereStr.WriteString(strconv.FormatInt(d.(int64), 10))
-		}
-
-		if idx < pkLen {
-			whereStr.WriteString(" and ")
-		}
-	}
-
-	return whereStr.String()
-}
-
-func (mm *MemMgr) GetDeleteCond(memMode *MemMode) (where string) {
-	if memMode == nil {
-		return
-	}
-	where = mm.GetPKCond(memMode)
-	return
-}
