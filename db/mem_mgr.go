@@ -68,6 +68,7 @@ type MemMgr struct {
 	queue        *utils.SafeQueue
 	queueWorking int32
 	queueWait    sync.WaitGroup
+	expire		 int64
 }
 
 func NewMemMgr(rc *RedisClient, initPK bool, dbName, tableName string, pks []string) *MemMgr {
@@ -99,6 +100,7 @@ func NewMemMgr(rc *RedisClient, initPK bool, dbName, tableName string, pks []str
 		dbMgr:        GetDB(dbName),
 		queue:        utils.NewSafeQueue(),
 		queueWorking: 0,
+		expire: 	  int64(time.Second) * 86400,
 	}
 
 	n := pksLen - 1
@@ -344,9 +346,9 @@ func (mm *MemMgr) MGet(keys ...string) (v []string, err error) {
 	return
 }
 
-func (mm *MemMgr) SetIK(ikName, ikValue string, v interface{}) (err error) {
+func (mm *MemMgr) SetIK(ikName, ikValue string, v interface{}, expire ...int64) (err error) {
 	keyName := mm.produceIKey(ikName, ikValue)
-	_, err = mm.rc.Set(keyName, v)
+	_, err = mm.rc.Set(keyName, v, expire...)
 	return
 }
 
@@ -411,7 +413,7 @@ func (mm *MemMgr) DelIK(ikName, ikValue string) (err error) {
 	return
 }
 
-func (mm *MemMgr) SetDataIK(ikName string, ikValue, pkValue interface{}) {
+func (mm *MemMgr) SetDataIK(ikName string, ikValue, pkValue interface{}, expire ...int64) {
 	ikVal, err := mm.convertKey(ikValue)
 	if err != nil {
 		mm.log.Error(err)
@@ -422,10 +424,10 @@ func (mm *MemMgr) SetDataIK(ikName string, ikValue, pkValue interface{}) {
 		mm.log.Error(err)
 		return
 	}
-	mm.SetIK(ikName, ikVal, pkVal)
+	mm.SetIK(ikName, ikVal, pkVal, expire...)
 }
 
-func (mm *MemMgr) setData(state int, key interface{}, d interface{}, saveDB bool) bool {
+func (mm *MemMgr) setData(state int, key interface{}, d interface{}, saveDB bool, expire ...int64) bool {
 	if d == nil {
 		return false
 	}
@@ -445,7 +447,7 @@ func (mm *MemMgr) setData(state int, key interface{}, d interface{}, saveDB bool
 		mm.putQueue(state, d)
 	}
 
-	err = mm.Set(k, v)
+	err = mm.Set(k, v, expire...)
 	if err != nil {
 		mm.log.Error(err)
 		return false
@@ -454,40 +456,40 @@ func (mm *MemMgr) setData(state int, key interface{}, d interface{}, saveDB bool
 	return true
 }
 
-func (mm *MemMgr) AddMem(key interface{}, d interface{}) bool {
-	return mm.setData(MEM_STATE_ORI, key, d, false)
+func (mm *MemMgr) AddMem(key interface{}, d interface{}, expire ...int64) bool {
+	return mm.setData(MEM_STATE_ORI, key, d, false, expire...)
 }
 
-func (mm *MemMgr) AddMemByMultiPK(keyValMap map[string]interface{}, d interface{}) bool {
+func (mm *MemMgr) AddMemByMultiPK(keyValMap map[string]interface{}, d interface{}, expire ...int64) bool {
 	keys, _ := mm.GetMultiPKValue(keyValMap)
 	if len(keys) == 0 {
 		return false
 	}
-	return mm.AddMem(keys, d)
+	return mm.AddMem(keys, d, expire...)
 }
 
-func (mm *MemMgr) AddData(key interface{}, d interface{}) bool {
-	return mm.setData(MEM_STATE_NEW, key, d, true)
+func (mm *MemMgr) AddData(key interface{}, d interface{}, expire ...int64) bool {
+	return mm.setData(MEM_STATE_NEW, key, d, true, expire...)
 }
 
-func (mm *MemMgr) AddDataByMultiPK(keyValMap map[string]interface{}, d interface{}) bool {
+func (mm *MemMgr) AddDataByMultiPK(keyValMap map[string]interface{}, d interface{}, expire ...int64) bool {
 	keys, _ := mm.GetMultiPKValue(keyValMap)
 	if len(keys) == 0 {
 		return false
 	}
-	return mm.AddData(keys, d)
+	return mm.AddData(keys, d, expire...)
 }
 
-func (mm *MemMgr) UpdateData(key interface{}, d interface{}) bool {
-	return mm.setData(MEM_STATE_UPDATE, key, d, true)
+func (mm *MemMgr) UpdateData(key interface{}, d interface{}, expire ...int64) bool {
+	return mm.setData(MEM_STATE_UPDATE, key, d, true, expire...)
 }
 
-func (mm *MemMgr) UpdateDataByMultiPK(keyValMap map[string]interface{}, d interface{}) bool {
+func (mm *MemMgr) UpdateDataByMultiPK(keyValMap map[string]interface{}, d interface{}, expire ...int64) bool {
 	keys, _ := mm.GetMultiPKValue(keyValMap)
 	if len(keys) == 0 {
 		return false
 	}
-	return mm.UpdateData(keys, d)
+	return mm.UpdateData(keys, d, expire...)
 }
 
 func (mm *MemMgr) getData(key string) ([]byte, error) {
@@ -533,7 +535,7 @@ func (mm *MemMgr) GetData(key interface{}, dest interface{}, checkDB ...bool) er
 					mm.log.Error(err)
 					return err
 				}
-				mm.setData(MEM_STATE_ORI, k, dest, false)
+				mm.setData(MEM_STATE_ORI, k, dest, false, mm.expire)
 			}
 		}
 		mm.log.Error(err)
@@ -567,7 +569,7 @@ func (mm *MemMgr) GetDataByMultiPK(keyValMap map[string]interface{}, dest interf
 					mm.log.Error(err)
 					return err
 				}
-				mm.setData(MEM_STATE_ORI, keys, dest, false)
+				mm.setData(MEM_STATE_ORI, keys, dest, false, mm.expire)
 			}
 		}
 		mm.log.Error(err)
