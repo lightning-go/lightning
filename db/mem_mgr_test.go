@@ -46,9 +46,9 @@ func testSinglePK(rc *RedisClient) {
 				Remark: 1,
 				Test:   2323.2,
 			}
-			ok := memUser.AddData(u.Id, &u)
+			ok := memUser.AddData(u.Id, &u, 20)
 			if ok {
-				memUser.SetDataIK("name", u.Name, u.Id)
+				memUser.SetDataIK("name", u.Name, u.Id, 20)
 			}
 		}
 
@@ -63,7 +63,7 @@ func testSinglePK(rc *RedisClient) {
 
 		oldName := u.Name
 		u.Name = "jason22222"
-		ok := memUser.UpdateData(u.Id, &u)
+		ok := memUser.UpdateData(u.Id, &u, 20)
 		if ok {
 			memUser.SetDataIK("name", u.Name, u.Id)
 			memUser.DelDataIK("name", oldName)
@@ -71,7 +71,7 @@ func testSinglePK(rc *RedisClient) {
 	}
 
 	time.Sleep(time.Second * 3)
-	memUser.DelData(1)
+	memUser.DelData(u.Id)
 	memUser.DelDataIK("name", "jason22222")
 }
 

@@ -92,10 +92,10 @@ func (rc *RedisClient) Get(key string) (d interface{}, err error) {
 	return conn.Do("GET", key)
 }
 
-func (rc *RedisClient) MGet(keys ...interface{}) (d []string, err error) {
+func (rc *RedisClient) MGet(keys ...interface{}) (d []interface{}, err error) {
 	conn := rc.pool.Get()
 	defer conn.Close()
-	return redis.Strings(conn.Do("MGET", keys...))
+	return redis.Values(conn.Do("MGET", keys...))
 }
 
 func (rc *RedisClient) HGet(key, field interface{}) (d interface{}, err error) {
@@ -104,10 +104,10 @@ func (rc *RedisClient) HGet(key, field interface{}) (d interface{}, err error) {
 	return conn.Do("HGET", key, field)
 }
 
-func (rc *RedisClient) HMGet(keys ...interface{}) (d []string, err error) {
+func (rc *RedisClient) HMGet(keys ...interface{}) (d []interface{}, err error) {
 	conn := rc.pool.Get()
 	defer conn.Close()
-	return redis.Strings(conn.Do("HMGET", keys...))
+	return redis.Values(conn.Do("HMGET", keys...))
 }
 
 func (rc *RedisClient) HGetAll(key string) (d interface{}, err error) {
@@ -139,16 +139,16 @@ func (rc *RedisClient) HSet(key, field, v interface{}) (d interface{}, err error
 	return conn.Do("HSET", key, field, v)
 }
 
-func (rc *RedisClient) Incr(key string) (d interface{}, err error) {
+func (rc *RedisClient) Incr(key interface{}) (d interface{}, err error) {
 	conn := rc.pool.Get()
 	defer conn.Close()
 	return conn.Do("INCR", key)
 }
 
-func (rc *RedisClient) Del(key string) (d interface{}, err error) {
+func (rc *RedisClient) Del(keys ...interface{}) (d interface{}, err error) {
 	conn := rc.pool.Get()
 	defer conn.Close()
-	return conn.Do("DEL", key)
+	return conn.Do("DEL", keys...)
 }
 
 func (rc *RedisClient) HDel(key, field interface{}) (d interface{}, err error) {
@@ -171,7 +171,7 @@ func (rc *RedisClient) ZAdd(key string, kvs map[string]string) (d interface{}, e
 	return conn.Do("ZADD", str...)
 }
 
-func (rc *RedisClient) ZRange(key string, start, end int) (d [][]string, err error) {
+func (rc *RedisClient) ZRange(key string, start, end int) (d [][]interface{}, err error) {
 	conn := rc.pool.Get()
 	defer conn.Close()
 	var v interface{}
@@ -182,62 +182,56 @@ func (rc *RedisClient) ZRange(key string, start, end int) (d [][]string, err err
 	return rc.parseZRangeWithScores(v), nil
 }
 
-func (rc *RedisClient) parseZRangeWithScores(v interface{}) [][]string {
+func (rc *RedisClient) parseZRangeWithScores(v interface{}) [][]interface{} {
 	value, ok := v.([]interface{})
 	if !ok {
 		return nil
 	}
 	valueLen := len(value)
-	d := make([][]string, 0)
+	d := make([][]interface{}, 0)
 	for i := 0; i < valueLen; i += 2 {
-		v1, err := redis.String(value[i], nil)
-		if err != nil {
-			continue
-		}
+		v1 := value[i]
 		if i + 1 < valueLen {
-			v2, err := redis.String(value[i + 1], nil)
-			if err != nil {
-				continue
-			}
-			d = append(d, []string{string(v2), string(v1)})
+			v2 := value[i + 1]
+			d = append(d, []interface{}{v2, v1})
 		}
 	}
 	return d
 }
 
-func (rc *RedisClient) PipeSet(conn redis.Conn, key, value interface{}) {
-	conn.Send("SET", key, value)
+func (rc *RedisClient) PipeSet(conn redis.Conn, key, value interface{}) error {
+	return conn.Send("SET", key, value)
 }
 
-func (rc *RedisClient) PipeHSet(conn redis.Conn, key, field, value interface{}) {
-	conn.Send("HSET", key, field, value)
+func (rc *RedisClient) PipeHSet(conn redis.Conn, key, field, value interface{}) error {
+	return conn.Send("HSET", key, field, value)
 }
 
-func (rc *RedisClient) PipeZAdd(conn redis.Conn, key string, kvs map[string]string) {
+func (rc *RedisClient) PipeZAdd(conn redis.Conn, key string, kvs map[string]string) error {
 	if kvs == nil || len(kvs) == 0 {
-		return
+		return nil
 	}
 	str := []interface{}{key}
 	for k, v := range kvs {
 		str = append(str, v, k)
 	}
-	conn.Send("ZADD", str...)
+	return conn.Send("ZADD", str...)
 }
 
-func (rc *RedisClient) PipeHGet(conn redis.Conn, key, field interface{}) {
-	conn.Send("HGET", key, field)
+func (rc *RedisClient) PipeHGet(conn redis.Conn, key, field interface{}) error {
+	return conn.Send("HGET", key, field)
 }
 
-func (rc *RedisClient) PipeDel(conn redis.Conn, keys ...interface{}) {
-	conn.Send("DEL", keys...)
+func (rc *RedisClient) PipeDel(conn redis.Conn, keys ...interface{}) error {
+	return conn.Send("DEL", keys...)
 }
 
-func (rc *RedisClient) PipeHDel(conn redis.Conn, key, field interface{}) {
-	conn.Send("HDEL", key, field)
+func (rc *RedisClient) PipeHDel(conn redis.Conn, key, field interface{}) error {
+	return conn.Send("HDEL", key, field)
 }
 
-func (rc *RedisClient) PipeEnd(conn redis.Conn) {
-	conn.Flush()
+func (rc *RedisClient) PipeEnd(conn redis.Conn) error {
+	return conn.Flush()
 }
 
 func (rc *RedisClient) PipeRecv(conn redis.Conn) (interface{}, error) {

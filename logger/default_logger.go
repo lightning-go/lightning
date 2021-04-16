@@ -20,12 +20,11 @@ func init() {
 	})
 }
 
-func InitLog(level string, maxAge, rotationTime int, pathFile string) {
-	lv := GetLevel(level)
+func InitLog(level, maxAge, rotationTime int, pathFile string) {
 	if defaultLogger == nil {
-		defaultLogger = NewLogger(lv)
+		defaultLogger = NewLogger(level)
 	}
-	defaultLogger.SetLevel(lv)
+	defaultLogger.SetLevel(level)
 
 	defaultLogger.SetRotation(time.Minute*time.Duration(maxAge),
 		time.Minute*time.Duration(rotationTime), pathFile)

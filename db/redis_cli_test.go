@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"github.com/gomodule/redigo/redis"
 	"testing"
 	"time"
 )
@@ -80,7 +81,14 @@ func TestZAdd(t *testing.T) {
 		fmt.Println(err)
 		return
 	}
-	fmt.Println(key, d)
+	for _, v := range d {
+		k1 := v[0]
+		v1 := v[1]
+		fk, _ := redis.String(k1, nil)
+		fv, _ := redis.String(v1, nil)
+		fmt.Println(fk, fv)
+	}
+
 
 }
 
@@ -106,12 +114,15 @@ func TestPip(t *testing.T) {
 	fmt.Println("pip set", d)
 	rc.CloseConn(conn)
 
-	d, err = rc.MGet(test4, test5, test6, test7)
+	dl, err := rc.MGet(test4, test5, test6, test7)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	fmt.Println("pip", d)
+	for _, v := range dl {
+		v2, _ := redis.String(v, nil)
+		fmt.Println("pip", v2)
+	}
 
 	conn = rc.GetConn()
 	rc.PipeDel(conn, test4)

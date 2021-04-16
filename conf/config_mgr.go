@@ -19,7 +19,7 @@ var cfgOnce sync.Once
 
 func InitCfg(path string) {
 	cfgOnce.Do(func() {
-		defaultServerCfgMgr = newServerCfgMgr()
+		defaultServerCfgMgr = NewServerCfgMgr()
 		defaultServerCfgMgr.LoadConf(path)
 	})
 	if defaultServerCfgMgr == nil {
@@ -124,7 +124,7 @@ type ServerCfgMgr struct {
 	Log     map[string]*LogConfig    `json:"log"`
 }
 
-func newServerCfgMgr() *ServerCfgMgr {
+func NewServerCfgMgr() *ServerCfgMgr {
 	return &ServerCfgMgr{
 		Servers: make(map[string]*ServerConfig),
 		Db:      make(map[string]*DBConfig),

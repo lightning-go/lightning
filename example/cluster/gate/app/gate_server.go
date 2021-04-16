@@ -61,8 +61,9 @@ func (gs *GateServer) init() {
 func (gs *GateServer) initLog() {
 	logConf := conf.GetLogConf("gate")
 	if logConf != nil {
+		logLv := logger.GetLevel(logConf.LogLevel)
 		pathFile := fmt.Sprintf("%s/%s", logConf.LogPath, logConf.LogFile)
-		logger.InitLog(logConf.LogLevel, logConf.MaxAge, logConf.RotationTime, pathFile)
+		logger.InitLog(logLv, logConf.MaxAge, logConf.RotationTime, pathFile)
 	}
 }
 
