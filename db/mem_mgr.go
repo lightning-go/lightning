@@ -311,6 +311,12 @@ func (mm *MemMgr) GetCond(key string, val interface{}) string {
 	return whereStr.String()
 }
 
+func (mm *MemMgr) Expire(key string, second int64) (err error) {
+	keyName := mm.producePriKey(key)
+	_, err = mm.rc.Expire(keyName, second)
+	return err
+}
+
 func (mm *MemMgr) Set(key string, v interface{}, expire ...int64) (err error) {
 	keyName := mm.producePriKey(key)
 	_, err = mm.rc.Set(keyName, v, expire...)
