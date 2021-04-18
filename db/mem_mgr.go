@@ -6,18 +6,18 @@
 package db
 
 import (
-	"github.com/lightning-go/lightning/logger"
-	"fmt"
-	"strings"
-	"time"
-	"strconv"
-	"sync"
-	"github.com/json-iterator/go"
 	"errors"
-	"github.com/lightning-go/lightning/utils"
-	"sync/atomic"
-	"runtime/debug"
+	"fmt"
 	"github.com/jinzhu/gorm"
+	"github.com/json-iterator/go"
+	"github.com/lightning-go/lightning/logger"
+	"github.com/lightning-go/lightning/utils"
+	"runtime/debug"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 )
 
 
@@ -311,6 +311,10 @@ func (mm *MemMgr) GetCond(key string, val interface{}) string {
 	return whereStr.String()
 }
 
+func (mm *MemMgr) SetExpire(second int64) {
+	mm.expire = second
+}
+
 func (mm *MemMgr) Expire(key string, second int64) (err error) {
 	keyName := mm.producePriKey(key)
 	_, err = mm.rc.Expire(keyName, second)
@@ -319,7 +323,11 @@ func (mm *MemMgr) Expire(key string, second int64) (err error) {
 
 func (mm *MemMgr) Set(key string, v interface{}, expire ...int64) (err error) {
 	keyName := mm.producePriKey(key)
-	_, err = mm.rc.Set(keyName, v, expire...)
+	exp := mm.expire
+	if len(expire) > 0 {
+		exp = expire[0]
+	}
+	_, err = mm.rc.Set(keyName, v, exp)
 	return err
 }
 
@@ -354,7 +362,11 @@ func (mm *MemMgr) MGet(keys ...string) (v []interface{}, err error) {
 
 func (mm *MemMgr) SetIK(ikName, ikValue string, v interface{}, expire ...int64) (err error) {
 	keyName := mm.produceIKey(ikName, ikValue)
-	_, err = mm.rc.Set(keyName, v, expire...)
+	exp := mm.expire
+	if len(expire) > 0 {
+		exp = expire[0]
+	}
+	_, err = mm.rc.Set(keyName, v, exp)
 	return
 }
 

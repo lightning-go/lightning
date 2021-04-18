@@ -6,10 +6,10 @@
 package db
 
 import (
-	"testing"
 	"fmt"
-	"time"
 	"github.com/jinzhu/gorm"
+	"testing"
+	"time"
 )
 
 type User struct {
@@ -28,6 +28,7 @@ type Player struct {
 
 func testSinglePK(rc *RedisClient) {
 	memUser := NewMemMgr(rc, true, "test", "user", []string{"id"})
+	memUser.SetExpire(20)
 
 	u := User{}
 	err := memUser.GetData(1, &u)
@@ -46,9 +47,9 @@ func testSinglePK(rc *RedisClient) {
 				Remark: 1,
 				Test:   2323.2,
 			}
-			ok := memUser.AddData(u.Id, &u, 20)
+			ok := memUser.AddData(u.Id, &u)
 			if ok {
-				memUser.SetDataIK("name", u.Name, u.Id, 20)
+				memUser.SetDataIK("name", u.Name, u.Id)
 			}
 		}
 
@@ -63,7 +64,7 @@ func testSinglePK(rc *RedisClient) {
 
 		oldName := u.Name
 		u.Name = "jason22222"
-		ok := memUser.UpdateData(u.Id, &u, 20)
+		ok := memUser.UpdateData(u.Id, &u)
 		if ok {
 			memUser.SetDataIK("name", u.Name, u.Id)
 			memUser.DelDataIK("name", oldName)
@@ -72,7 +73,7 @@ func testSinglePK(rc *RedisClient) {
 
 	time.Sleep(time.Second * 3)
 	memUser.DelData(u.Id)
-	memUser.DelDataIK("name", "jason22222")
+	memUser.DelDataIK("name", u.Name)
 }
 
 func testMultiPK(rc *RedisClient) {
