@@ -628,32 +628,8 @@ func (mm *MemMgr) GetDataByIK(ikName string, ikValue, dest interface{}) error {
 		return ConvertTypeError
 	}
 
-	pk, err := mm.convertKey(v)
-	if err != nil {
-		mm.log.Error(err)
-		return err
-	}
-	d, err = mm.Get(pk)
-	if err != nil {
-		mm.log.Error(err)
-		return err
-	}
-	v, ok = d.([]byte)
-	if !ok {
-		mm.log.Error("convert type error", logger.Fields{
-			"key":   pk,
-			"value": v,
-		})
-		return ConvertTypeError
-	}
+	return mm.GetData(v, dest)
 
-	err = jsoniter.Unmarshal(v, dest)
-	if err != nil {
-		mm.log.Error(err)
-		return err
-	}
-
-	return nil
 }
 
 func (mm *MemMgr) DelData(key interface{}) bool {

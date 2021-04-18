@@ -6,16 +6,18 @@
 package utils
 
 import (
+	"context"
+	"errors"
+	"fmt"
+	"github.com/lightning-go/lightning/logger"
 	"os"
 	"os/signal"
-	"github.com/lightning-go/lightning/logger"
 	"reflect"
-	"unsafe"
-	"time"
-	"errors"
-	"context"
+	"strings"
 	"sync"
 	"syscall"
+	"time"
+	"unsafe"
 )
 
 var (
@@ -132,3 +134,23 @@ func DelMapContext(ctx context.Context, key interface{}) {
 		}
 	}
 }
+
+func Struct2Map(obj interface{}) map[string]interface{} {
+	elem := reflect.ValueOf(obj).Elem()
+	relType := elem.Type()
+	data := make(map[string]interface{})
+	for i := 0; i < relType.NumField(); i++ {
+		k := relType.Field(i).Name
+		kl := len(k)
+		if kl == 0 {
+			continue
+		}
+		f := strings.ToLower(string(k[0]))
+		if kl > 1 {
+			f = fmt.Sprintf("%s%s", f, k[1:])
+		}
+		data[f] = elem.Field(i).Interface()
+	}
+	return data
+}
+
