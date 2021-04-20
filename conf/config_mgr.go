@@ -17,42 +17,46 @@ var defaultCfgPath = "config/srvConf.json"
 var defaultServerCfgMgr *ServerCfgMgr
 var cfgOnce sync.Once
 
-func InitCfg(path string) {
+func InitCfg(path ...string) {
+	GetDefalutServerCfgMgr().LoadConf(path...)
+}
+
+func GetDefalutServerCfgMgr() *ServerCfgMgr {
 	cfgOnce.Do(func() {
 		defaultServerCfgMgr = NewServerCfgMgr()
-		defaultServerCfgMgr.LoadConf(path)
 	})
 	if defaultServerCfgMgr == nil {
 		panic("init config failed")
 	}
+	return defaultServerCfgMgr
 }
 
 func GetDefaultLogConf() *LogConfig {
 	if defaultServerCfgMgr == nil {
 		return nil
 	}
-	return defaultServerCfgMgr.GetLogConf("default")
+	return defaultServerCfgMgr.GetLogCfg("default")
 }
 
-func GetLogConf(logName string) *LogConfig {
+func GetLogCfg(logName string) *LogConfig {
 	if defaultServerCfgMgr == nil {
 		return nil
 	}
-	return defaultServerCfgMgr.GetLogConf(logName)
+	return defaultServerCfgMgr.GetLogCfg(logName)
 }
 
-func GetServer(srvName string) *ServerConfig {
+func GetSrvCfg(srvName string) *ServerConfig {
 	if defaultServerCfgMgr == nil {
 		return nil
 	}
-	return defaultServerCfgMgr.GetServer(srvName)
+	return defaultServerCfgMgr.GetSrvCfg(srvName)
 }
 
-func GetDB(srvName string) *DBConfig {
+func GetDBCfg(srvName string) *DBConfig {
 	if defaultServerCfgMgr == nil {
 		return nil
 	}
-	return defaultServerCfgMgr.GetDB(srvName)
+	return defaultServerCfgMgr.GetDBCfg(srvName)
 }
 
 func GetServerName() string {
@@ -132,22 +136,23 @@ func NewServerCfgMgr() *ServerCfgMgr {
 	}
 }
 
-func (scm *ServerCfgMgr) LoadConf(path string) {
-	data, err := LoadFile(path)
-	if err != nil {
-		panic(err)
-	}
-
+func (scm *ServerCfgMgr) LoadConf(path ...string) {
 	scm.mux.Lock()
 	defer scm.mux.Unlock()
 
-	err = jsoniter.Unmarshal(data, scm)
-	if err != nil {
-		panic(err)
+	for _, file := range path {
+		data, err := LoadFile(file)
+		if err != nil {
+			panic(err)
+		}
+		err = jsoniter.Unmarshal(data, scm)
+		if err != nil {
+			panic(err)
+		}
 	}
 }
 
-func (scm *ServerCfgMgr) GetLogConf(logName string) *LogConfig {
+func (scm *ServerCfgMgr) GetLogCfg(logName string) *LogConfig {
 	scm.mux.RLock()
 	defer scm.mux.RUnlock()
 
@@ -158,7 +163,7 @@ func (scm *ServerCfgMgr) GetLogConf(logName string) *LogConfig {
 	return d
 }
 
-func (scm *ServerCfgMgr) GetServer(key string) *ServerConfig {
+func (scm *ServerCfgMgr) GetSrvCfg(key string) *ServerConfig {
 	if scm.Servers == nil {
 		return nil
 	}
@@ -173,7 +178,7 @@ func (scm *ServerCfgMgr) GetServer(key string) *ServerConfig {
 	return v
 }
 
-func (scm *ServerCfgMgr) GetDB(key string) *DBConfig {
+func (scm *ServerCfgMgr) GetDBCfg(key string) *DBConfig {
 	if scm.Db == nil {
 		return nil
 	}

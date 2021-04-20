@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"github.com/jinzhu/gorm"
 	"github.com/json-iterator/go"
+	"github.com/lightning-go/lightning/conf"
 	"github.com/lightning-go/lightning/logger"
 	"github.com/lightning-go/lightning/utils"
 	"runtime/debug"
@@ -71,21 +72,26 @@ type MemMgr struct {
 	expire		 int64
 }
 
-func NewMemMgr(rc *RedisClient, initPK bool, dbName, tableName string, pks []string) *MemMgr {
+func NewMemMgr(rc *RedisClient, initPK bool, dbName, tableName string, pks []string, logCfg ...*conf.LogConfig) *MemMgr {
+	log := logger.NewLogger(logger.TRACE)
+	if len(logCfg) > 0 {
+		logConf := logCfg[0]
+		if logConf != nil {
+			logLv := logger.GetLevel(logConf.LogLevel)
+			pathFile := fmt.Sprintf("%v/%v", logConf.LogPath, logConf.LogFile)
+			log.SetLevel(logLv)
+			log.SetRotation(time.Minute*time.Duration(logConf.MaxAge), time.Minute*time.Duration(logConf.RotationTime), pathFile)
+		}
+	}
+
 	if rc == nil {
-		logger.Error("redis client is nil")
+		log.Error("redis client is nil")
 		return nil
 	}
 
 	pksLen := len(pks)
 	if pksLen == 0 {
-		logger.Error("pk is nil")
-		return nil
-	}
-
-	log := logger.NewLogger(logger.TRACE)
-	if log == nil {
-		logger.Error("log create failed")
+		log.Error("pk is nil")
 		return nil
 	}
 
@@ -118,6 +124,7 @@ func NewMemMgr(rc *RedisClient, initPK bool, dbName, tableName string, pks []str
 		mm.initPKValue()
 	}
 
+	mm.log.Infof("table %v cache init ok", mm.tableName)
 	return mm
 }
 
@@ -169,8 +176,7 @@ func (mm *MemMgr) SetLogLevel(lv int) {
 	}
 }
 
-func (mm *MemMgr) SetLogRotation(lv, maxAge, rotationTime int, pathFile string) {
-	mm.SetLogLevel(lv)
+func (mm *MemMgr) SetLogRotation(maxAge, rotationTime int, pathFile string) {
 	mm.log.SetRotation(time.Minute*time.Duration(maxAge), time.Minute*time.Duration(rotationTime), pathFile)
 }
 
@@ -700,17 +706,17 @@ func (mm *MemMgr) putQueue(state int, d interface{}) {
 
 func (mm *MemMgr) enableQueue() {
 	go func() {
-		logger.Tracef("enable memMode queue")
+		mm.log.Tracef("enable memMode queue")
 		atomic.StoreInt32(&mm.queueWorking, 1)
 		mm.queueWait.Done()
 
 		defer func() {
-			logger.Tracef("disable memMode queue")
+			mm.log.Tracef("disable memMode queue")
 			atomic.StoreInt32(&mm.queueWorking, 0)
 			err := recover()
 			if err != nil {
-				logger.Error(err)
-				logger.Error(string(debug.Stack()))
+				mm.log.Error(err)
+				mm.log.Error(string(debug.Stack()))
 			}
 		}()
 

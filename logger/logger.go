@@ -6,13 +6,14 @@
 package logger
 
 import (
+	"fmt"
+	"github.com/lestrrat-go/file-rotatelogs"
+	"github.com/lightning-go/lightning/conf"
+	"github.com/rifflock/lfshook"
 	log "github.com/sirupsen/logrus"
 	"os"
 	"runtime"
-	"fmt"
 	"time"
-	"github.com/lestrrat-go/file-rotatelogs"
-	"github.com/rifflock/lfshook"
 )
 
 const (
@@ -49,6 +50,29 @@ func NewLogger(lv int, isJsonFormat ...bool) *Logger {
 	}
 	l.logger.SetFormatter(format)
 	l.logger.SetLevel(log.Level(lv))
+	l.logger.SetOutput(os.Stdout)
+	return l
+}
+
+func NewLoggerByCfg(cfg *conf.LogConfig, isJsonFormat ...bool) *Logger {
+	if cfg == nil {
+		return nil
+	}
+	l := &Logger{
+		logger:  log.New(),
+		skipNum: skipNum,
+	}
+
+	logLv := GetLevel(cfg.LogLevel)
+	pathFile := fmt.Sprintf("%v/%v", cfg.LogPath, cfg.LogFile)
+	l.SetLevel(logLv)
+	l.SetRotation(time.Minute*time.Duration(cfg.MaxAge), time.Minute*time.Duration(cfg.RotationTime), pathFile)
+
+	var format log.Formatter = &log.TextFormatter{TimestampFormat: "2006/01/02 15:04:05"}
+	if len(isJsonFormat) > 0 && isJsonFormat[0] {
+		format = &log.JSONFormatter{TimestampFormat: "2006/01/02 15:04:05"}
+	}
+	l.logger.SetFormatter(format)
 	l.logger.SetOutput(os.Stdout)
 	return l
 }

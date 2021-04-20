@@ -32,7 +32,7 @@ func (gs *GateServer) watch() bool {
 	}
 	group := srvCfg.WatchGroups[0]
 
-	etcdCfg := conf.GetServer("etcd")
+	etcdCfg := conf.GetSrvCfg("etcd")
 	if etcdCfg == nil {
 		logger.Error("etcd config error")
 		return false

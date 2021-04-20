@@ -59,7 +59,7 @@ func (gs *GateServer) init() {
 }
 
 func (gs *GateServer) initLog() {
-	logConf := conf.GetLogConf("gate")
+	logConf := conf.GetLogCfg("gate")
 	if logConf != nil {
 		logLv := logger.GetLevel(logConf.LogLevel)
 		pathFile := fmt.Sprintf("%s/%s", logConf.LogPath, logConf.LogFile)

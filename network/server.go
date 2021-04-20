@@ -29,7 +29,7 @@ func NewServer(name, confPath string) *Server {
 	if len(confPath) > 0 {
 		conf.InitCfg(confPath)
 	}
-	cfg := conf.GetServer(name)
+	cfg := conf.GetSrvCfg(name)
 	if cfg == nil {
 		panic(fmt.Sprintf("%v config load failed", name))
 	}
@@ -45,7 +45,7 @@ func NewServer(name, confPath string) *Server {
 	s.init()
 
 	for _, remoteName := range cfg.Remotes {
-		rCfg := conf.GetServer(remoteName)
+		rCfg := conf.GetSrvCfg(remoteName)
 		if rCfg == nil {
 			continue
 		}

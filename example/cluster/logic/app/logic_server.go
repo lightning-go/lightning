@@ -52,7 +52,7 @@ func (ls *LogicServer) init() {
 }
 
 func (ls *LogicServer) initLog() {
-	logConf := conf.GetLogConf("logic")
+	logConf := conf.GetLogCfg("logic")
 	if logConf != nil {
 		logLv := logger.GetLevel(logConf.LogLevel)
 		pathFile := fmt.Sprintf("%s/%s", logConf.LogPath, logConf.LogFile)

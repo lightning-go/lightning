@@ -23,7 +23,7 @@ func (ls *LogicServer) initEtcd() {
 }
 
 func (ls *LogicServer) registerEtcd() bool {
-	etcdCfg := conf.GetServer("etcd")
+	etcdCfg := conf.GetSrvCfg("etcd")
 	if etcdCfg == nil {
 		logger.Error("etcd config error")
 		return false

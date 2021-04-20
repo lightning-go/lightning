@@ -10,6 +10,7 @@ import (
 	"github.com/jinzhu/gorm"
 	"fmt"
 	"github.com/lightning-go/lightning/logger"
+	"github.com/lightning-go/lightning/conf"
 	"time"
 	"database/sql"
 )
@@ -32,16 +33,23 @@ type DBMgr struct {
 	log    *logger.Logger
 }
 
-func NewDBMgr(dbType, dbName, user, pwd, host string) *DBMgr {
+func NewDBMgr(dbType, dbName, user, pwd, host string, logCfg ...*conf.LogConfig) *DBMgr {
 	dbMgr := &DBMgr{
 		host:   host,
 		dbName: dbName,
 		user:   user,
 		pwd:    pwd,
-		log:    logger.NewLogger(logger.TRACE),
 	}
-	if dbMgr.log == nil {
-		return nil
+
+	if len(logCfg) == 0 {
+		dbMgr.SetLogLevel(logger.TRACE)
+	} else {
+		logConf := logCfg[0]
+		if logConf == nil {
+			dbMgr.SetLogLevel(logger.TRACE)
+		} else {
+			dbMgr.log = logger.NewLoggerByCfg(logConf)
+		}
 	}
 
 	sqlConn := ""
@@ -69,6 +77,14 @@ func NewDBMgr(dbType, dbName, user, pwd, host string) *DBMgr {
 	return dbMgr
 }
 
+func NewDBMgrByCfg(dbType string, dbCfg *conf.DBConfig, logCfg ...*conf.LogConfig) *DBMgr {
+	if dbCfg == nil {
+		return nil
+	}
+	addr := fmt.Sprintf("%v:%v", dbCfg.Host, dbCfg.Port)
+	return NewDBMgr(dbType, dbCfg.Name, dbCfg.User, dbCfg.Pwd, addr, logCfg...)
+}
+
 func (dbMgr *DBMgr) SetLogLevel(lv int) {
 	if dbMgr.log == nil {
 		dbMgr.log = logger.NewLogger(lv)
@@ -77,8 +93,7 @@ func (dbMgr *DBMgr) SetLogLevel(lv int) {
 	}
 }
 
-func (dbMgr *DBMgr) SetLogRotation(lv, maxAge, rotationTime int, pathFile string) {
-	dbMgr.SetLogLevel(lv)
+func (dbMgr *DBMgr) SetLogRotation(maxAge, rotationTime int, pathFile string) {
 	dbMgr.log.SetRotation(time.Minute*time.Duration(maxAge), time.Minute*time.Duration(rotationTime), pathFile)
 }
 

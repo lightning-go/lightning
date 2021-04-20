@@ -42,7 +42,7 @@ func (cs *CenterServer) init() {
 }
 
 func (cs *CenterServer) initLog() {
-	logConf := conf.GetLogConf("center")
+	logConf := conf.GetLogCfg("center")
 	if logConf != nil {
 		logLv := logger.GetLevel(logConf.LogLevel)
 		pathFile := fmt.Sprintf("%s/%s", logConf.LogPath, logConf.LogFile)
