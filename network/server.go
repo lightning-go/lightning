@@ -25,9 +25,9 @@ type Server struct {
 	disConnCallback defs.ConnCallback
 }
 
-func NewServer(name, confPath string) *Server {
+func NewServer(name string, confPath ...string) *Server {
 	if len(confPath) > 0 {
-		conf.InitCfg(confPath)
+		conf.InitCfg(confPath...)
 	}
 	cfg := conf.GetSrvCfg(name)
 	if cfg == nil {

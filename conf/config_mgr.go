@@ -100,6 +100,7 @@ type ServerConfig struct {
 	Name          string   `json:"name"`
 	Host          string   `json:"host"`
 	Port          int      `json:"port"`
+	WebHost       string   `json:"webHost"`
 	WebPort       int      `json:"webPort"`
 	MaxConn       int      `json:"maxConn"`
 	MaxPacketSize int      `json:"maxPacketSize"`
