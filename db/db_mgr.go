@@ -167,7 +167,7 @@ func (dbMgr *DBMgr) QueryOneCond(tableName, where string, f func(*sql.Row)) {
 	if f == nil {
 		return
 	}
-	s := fmt.Sprintf("SELECT * FROM %s WHERE %s;", tableName, where)
+	s := fmt.Sprintf("SELECT * FROM %s WHERE %s LIMIT 1;", tableName, where)
 	row := dbMgr.dbConn.Raw(s).Row()
 	f(row)
 }
@@ -220,11 +220,16 @@ func (dbMgr *DBMgr) Query(tableName string, f func(*sql.Rows)) {
 	rows.Close()
 }
 
-func (dbMgr *DBMgr) QueryCondEx(tableName, where string, objCallback func()interface{}, f func(interface{})) {
+func (dbMgr *DBMgr) queryCondEx(tableName, where string, objCallback func()interface{}, f func(interface{}), limitOne bool) {
 	if objCallback == nil || f == nil {
 		return
 	}
-	s := fmt.Sprintf("SELECT * FROM %s WHERE %s;", tableName, where)
+	var s string
+	if limitOne {
+		s = fmt.Sprintf("SELECT * FROM %s WHERE %s LIMIT 1;", tableName, where)
+	} else {
+		s = fmt.Sprintf("SELECT * FROM %s WHERE %s;", tableName, where)
+	}
 	rows, err := dbMgr.dbConn.Raw(s).Rows()
 	if err != nil {
 		if err != sql.ErrNoRows {
@@ -240,7 +245,18 @@ func (dbMgr *DBMgr) QueryCondEx(tableName, where string, objCallback func()inter
 			continue
 		}
 		f(result)
+		if limitOne {
+			break
+		}
 	}
 	rows.Close()
+}
+
+func (dbMgr *DBMgr) QueryCondEx(tableName, where string, objCallback func()interface{}, f func(interface{})) {
+	dbMgr.queryCondEx(tableName, where, objCallback, f, false)
+}
+
+func (dbMgr *DBMgr) QueryOneCondEx(tableName, where string, objCallback func()interface{}, f func(interface{})) {
+	dbMgr.queryCondEx(tableName, where, objCallback, f, true)
 }
 
