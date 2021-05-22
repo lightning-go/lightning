@@ -20,7 +20,7 @@ func DelClient(sessionId string) {
 	defaultClientMgr.DelSession(sessionId)
 }
 
-func DelClientByConnId(connId string) []string {
+func DelClientByConnId(connId string) []defs.ISession {
 	return defaultClientMgr.DelConnSession(connId)
 }
 
@@ -32,11 +32,9 @@ func GetClientCount() int64 {
 	return defaultClientMgr.SessionCount()
 }
 
-//func CheckAddClient(conn defs.IConnection, sessionId string, serve defs.ServeObj, async ...bool) defs.ISession {
 func CheckAddClient(conn defs.IConnection, sessionId string, serviceHandle network.ServiceHandle, async ...bool) defs.ISession {
 	client := defaultClientMgr.GetSession(sessionId)
 	if client == nil {
-		//client = NewClient(conn, sessionId, serve, async...)
 		client = NewClient(conn, sessionId, serviceHandle, async...)
 		if client == nil {
 			return nil

@@ -6,9 +6,9 @@
 package network
 
 import (
+	"github.com/lightning-go/lightning/defs"
 	"sync"
 	"sync/atomic"
-	"github.com/lightning-go/lightning/defs"
 )
 
 type Map struct {
@@ -127,10 +127,10 @@ func (sm *SessionMgr) GetSession(sessionId string) defs.ISession {
 	return s
 }
 
-func (sm *SessionMgr) DelSession(sessionId string) {
+func (sm *SessionMgr) DelSession(sessionId string) defs.ISession {
 	session := sm.GetSession(sessionId)
 	if session == nil {
-		return
+		return nil
 	}
 	session.CloseSession()
 
@@ -141,15 +141,16 @@ func (sm *SessionMgr) DelSession(sessionId string) {
 	if d != nil {
 		d.Delete(sessionId)
 	}
+	return session
 }
 
-func (sm *SessionMgr) DelConnSession(connId string) []string {
+func (sm *SessionMgr) DelConnSession(connId string) []defs.ISession {
 	d := sm.getConnSession(connId)
 	if d == nil {
 		return nil
 	}
 
-	delSessionIdList := make([]string, 0)
+	delSessions := make([]defs.ISession, 0)
 	d.Range(func(key, value interface{}) bool {
 		sessionId, ok := key.(string)
 		if !ok {
@@ -162,11 +163,11 @@ func (sm *SessionMgr) DelConnSession(connId string) []string {
 		}
 
 		sm.sessions.Del(sessionId)
-		delSessionIdList = append(delSessionIdList, sessionId)
+		delSessions = append(delSessions, session)
 		return true
 	})
 	sm.connDict.Del(connId)
-	return delSessionIdList
+	return delSessions
 }
 
 func (sm *SessionMgr) RangeSession(f func(string, defs.ISession) bool) {
