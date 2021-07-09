@@ -6,12 +6,12 @@
 package etcd
 
 import (
+	"context"
 	"github.com/coreos/etcd/clientv3"
+	"github.com/coreos/etcd/mvcc/mvccpb"
+	"github.com/lightning-go/lightning/logger"
 	"runtime/debug"
 	"time"
-	"github.com/lightning-go/lightning/logger"
-	"context"
-	"github.com/coreos/etcd/mvcc/mvccpb"
 )
 
 
@@ -143,7 +143,7 @@ func (e *Etcd) Delete(key string, oldDataCallback ...func(k, v []byte)) {
 	}
 }
 
-func (e *Etcd) Watch(key string, putCallback, delCallback func(k, v []byte)) {
+func (e *Etcd) Watch(key string, putCallback func(k, v []byte), delCallback func([]byte)) {
 	if putCallback == nil && delCallback == nil {
 		return
 	}
@@ -171,7 +171,7 @@ func (e *Etcd) Watch(key string, putCallback, delCallback func(k, v []byte)) {
 
 }
 
-func (e *Etcd) watch(key string, resp *clientv3.GetResponse, putCallback, delCallback func(k, v []byte)) {
+func (e *Etcd) watch(key string, resp *clientv3.GetResponse, putCallback func(k, v []byte), delCallback func([]byte)) {
 	defer func() {
 		if err := recover(); err != nil {
 			logger.Error(err)
@@ -200,7 +200,7 @@ func (e *Etcd) watch(key string, resp *clientv3.GetResponse, putCallback, delCal
 						}
 					case mvccpb.DELETE:
 						if delCallback != nil {
-							delCallback(we.Kv.Key, we.Kv.Value)
+							delCallback(we.Kv.Key)
 						}
 					}
 				}

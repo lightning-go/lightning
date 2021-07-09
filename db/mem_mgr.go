@@ -448,7 +448,10 @@ func (mm *MemMgr) SetDataIK(ikName string, ikValue, pkValue interface{}, expire 
 		mm.log.Error(err)
 		return
 	}
-	mm.SetIK(ikName, ikVal, pkVal, expire...)
+	err = mm.SetIK(ikName, ikVal, pkVal, expire...)
+	if err != nil {
+		mm.log.Error(err)
+	}
 }
 
 func (mm *MemMgr) setData(state int, key interface{}, d interface{}, saveDB bool, expire ...int64) bool {

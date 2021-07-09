@@ -59,7 +59,7 @@ func (gs *GateServer) watch() bool {
 
 		logger.Debugf("watch add data: %s, %v", k, sd)
 
-	}, func(k, v []byte) {
+	}, func(k []byte) {
 		logger.Tracef("watch delete data: %s", k)
 
 		key := string(k)

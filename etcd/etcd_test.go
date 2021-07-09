@@ -6,8 +6,8 @@
 package etcd
 
 import (
-	"testing"
 	"fmt"
+	"testing"
 )
 
 func TestEtcd(t *testing.T) {
@@ -35,8 +35,8 @@ func TestEtcd(t *testing.T) {
 
 	e.Watch("/hi", func(k, v []byte) {
 		fmt.Println("watch put value:", string(k), string(v))
-	}, func(k, v []byte) {
-		fmt.Println("watch del value:", string(k), string(v))
+	}, func(k []byte) {
+		fmt.Println("watch del value:", string(k))
 	})
 
 	e.Put("/hi/1", "hello---")
