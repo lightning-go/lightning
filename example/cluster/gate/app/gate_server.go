@@ -6,18 +6,17 @@
 package app
 
 import (
-	"fmt"
-	"github.com/lightning-go/lightning/network"
+	"github.com/lightning-go/lightning/conf"
 	"github.com/lightning-go/lightning/defs"
-	"github.com/lightning-go/lightning/module"
-	"github.com/lightning-go/lightning/logger"
 	"github.com/lightning-go/lightning/etcd"
+	"github.com/lightning-go/lightning/example/cluster/gate/service"
+	"github.com/lightning-go/lightning/example/cluster/msg"
+	"github.com/lightning-go/lightning/logger"
+	"github.com/lightning-go/lightning/module"
+	"github.com/lightning-go/lightning/network"
+	"github.com/lightning-go/lightning/utils"
 	"runtime/debug"
 	"time"
-	"github.com/lightning-go/lightning/example/cluster/gate/service"
-	"github.com/lightning-go/lightning/utils"
-	"github.com/lightning-go/lightning/example/cluster/msg"
-	"github.com/lightning-go/lightning/conf"
 )
 
 const (
@@ -62,7 +61,7 @@ func (gs *GateServer) initLog() {
 	logConf := conf.GetLogCfg("gate")
 	if logConf != nil {
 		logLv := logger.GetLevel(logConf.LogLevel)
-		pathFile := fmt.Sprintf("%s/%s", logConf.LogPath, logConf.LogFile)
+		pathFile := logger.GetLogPathFile(logConf)
 		logger.InitLog(logLv, logConf.MaxAge, logConf.RotationTime, pathFile)
 	}
 }

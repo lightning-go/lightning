@@ -6,6 +6,8 @@
 package logger
 
 import (
+	"fmt"
+	"github.com/lightning-go/lightning/conf"
 	"sync"
 	"time"
 )
@@ -54,6 +56,13 @@ func GetLevel(lvKey string) (lv int) {
 
 func SetLevel(level int) {
 	defaultLogger.SetLevel(level)
+}
+
+func GetLogPathFile(logConf *conf.LogConfig) string {
+	if logConf == nil {
+		return ""
+	}
+	return fmt.Sprintf("%v/%v", logConf.LogPath, logConf.LogFile)
 }
 
 func Panic(args interface{}, fields ...map[string]interface{}) {

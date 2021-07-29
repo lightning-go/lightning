@@ -57,8 +57,6 @@ func (gs *GateServer) watch() bool {
 			return gs.initRemote(data)
 		})
 
-		logger.Debugf("watch add data: %s, %v", k, sd)
-
 	}, func(k []byte) {
 		logger.Tracef("watch delete data: %s", k)
 

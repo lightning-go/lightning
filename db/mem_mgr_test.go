@@ -8,6 +8,7 @@ package db
 import (
 	"fmt"
 	"github.com/jinzhu/gorm"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -19,130 +20,117 @@ type User struct {
 	Test   float32 `json:"test"`
 }
 
-type Player struct {
-	Id   int64   `json:"id"`
-	Name string  `json:"name"`
-	Info string  `json:"info"`
-	Test float32 `json:"test"`
+func (u *User) toString() string {
+	return fmt.Sprintf("%d, %s, %d, %f", u.Id, u.Name, u.Remark, u.Test)
 }
 
-func testSinglePK(rc *RedisClient) {
-	memUser := NewMemMgr(rc, true, "test", "user", []string{"id"})
-	memUser.SetExpire(20)
 
-	u := User{}
-	err := memUser.GetData(1, &u)
-	if err == nil {
-		fmt.Println("pk get", u.Id, u.Name, u.Remark, u.Test)
-	}
-
-	id := memUser.GetPKIncr()
-	u = User{}
-	err = memUser.GetData(id, &u)
-	if err == gorm.ErrRecordNotFound {
-		if id > 0 {
-			u := User{
-				Id:     id,
-				Name:   "jason",
-				Remark: 1,
-				Test:   2323.2,
-			}
-			ok := memUser.AddData(u.Id, &u)
-			if ok {
-				memUser.SetDataIK("name", u.Name, u.Id)
-			}
-		}
-
-	} else {
-		fmt.Println("pk get", u.Id, u.Name, u.Remark, u.Test)
-	}
-
-	u = User{}
-	err = memUser.GetDataByIK("name", "jason", &u)
-	if err == nil {
-		fmt.Println("ik get", u.Id, u.Name, u.Remark, u.Test)
-
-		oldName := u.Name
-		u.Name = "jason22222"
-		ok := memUser.UpdateData(u.Id, &u)
-		if ok {
-			memUser.SetDataIK("name", u.Name, u.Id)
-			memUser.DelDataIK("name", oldName)
-		}
-	}
-
-	time.Sleep(time.Second * 3)
-	memUser.DelData(u.Id)
-	memUser.DelDataIK("name", u.Name)
-}
-
-func testMultiPK(rc *RedisClient) {
-	memPlayer := NewMemMgr(rc, false, "test", "player", []string{"id", "name"})
-
-	p := Player{}
-	err := memPlayer.GetDataByMultiPK(map[string]interface{}{
-		"id": 3,
-		"name": "jason",
-	}, &p)
-	if err == gorm.ErrRecordNotFound {
-		u := Player{
-			Id:   3,
-			Name: "jason",
-			Info: "test...",
-			Test: 2323.2,
-		}
-		memPlayer.AddDataByMultiPK(map[string]interface{}{
-			"id": u.Id,
-			"name": u.Name,
-		}, &u)
-
-	} else {
-		fmt.Println("pk get", p.Id, p.Name, p.Info, p.Test)
-
-		p.Test = 1231.1
-		p.Info = "test...modify"
-		memPlayer.UpdateDataByMultiPK(map[string]interface{}{
-			"id": p.Id,
-			"name": p.Name,
-		}, &p)
-
-	}
-
-	err = memPlayer.GetDataByMultiPK(map[string]interface{}{
-		"id": 3,
-		"name": "jason",
-	}, &p)
-	if err == nil {
-		fmt.Println("pk get", p.Id, p.Name, p.Info, p.Test)
-	}
-
-	time.Sleep(time.Second * 3)
-	memPlayer.DelDataByMultiPK(map[string]interface{}{
-		"id": 3,
-		"name": "jason",
-	})
+func newDBMgr() (*DBMgr, *RedisClient) {
+	dbMgr := NewDBMgr(DB_type_mysql, "test", "root", "123456", "127.0.0.1:3306")
+	rc := NewRedisClient("127.0.0.1:6379", 1, 0)
+	return dbMgr, rc
 }
 
 func Test1(t *testing.T) {
-	dbMgr := NewDBMgr(DB_type_mysql, "test", "root", "123456", "127.0.0.1:3306")
-	defer dbMgr.Close()
+	dbMgr, rc := newDBMgr()
+	defer func (){
+		dbMgr.Close()
+		rc.Close()
+	}()
 
-	rc := NewRedisClient("127.0.0.1:6379", 1, 0)
-	defer rc.Close()
-
-	testSinglePK(rc)
-
-	time.Sleep(time.Second * 3)
+	test(rc)
 }
 
-func Test2(t *testing.T) {
-	dbMgr := NewDBMgr(DB_type_mysql, "test", "root", "123456", "127.0.0.1:3306")
-	defer dbMgr.Close()
+func test(rc *RedisClient) {
+	memUser := NewMemMgr(rc, "test", "user", "id",
+		func(obj interface{}) interface{} {
+			u, ok := obj.(*User)
+			if ok {
+				return u.Id
+			}
+			return nil
+		})
 
-	rc := NewRedisClient("127.0.0.1:6379", 1, 0)
-	defer rc.Close()
+	ikName := "name"
+	ikNameCallback := func(obj interface{})(string,interface{}){
+		u, ok := obj.(*User)
+		if ok {
+			return ikName, u.Name
+		}
+		return "", nil
+	}
 
-	testMultiPK(rc)
+	ikRemark := "name:remark"
+	ikRemarkCallback := func(obj interface{})(string,interface{}){
+		u, ok := obj.(*User)
+		if ok {
+			return ikRemark, fmt.Sprintf("%s:%d", u.Name, u.Remark)
+		}
+		return "", nil
+	}
 
-	time.Sleep(time.Second * 3)
+	memUser.SetIKCallback([]IkCallback {ikNameCallback, ikRemarkCallback})
+
+	u := &User{}
+	where := "name = 'jason1'"
+	err := memUser.GetDataByIK(ikName, "jason1", u, where)
+	if err == nil {
+		fmt.Println("ikName get", u.toString())
+	}
+
+	u = &User{}
+	err = memUser.GetData(1, u)
+	if err == nil {
+		fmt.Println("pk get", u.toString())
+	}
+
+	id := memUser.GetPKIncr()
+	u = &User{}
+	err = memUser.GetData(id, u)
+	if err == gorm.ErrRecordNotFound {
+		if id > 0 {
+			remark, _ := strconv.Atoi(strconv.FormatInt(id, 10))
+			u = &User{
+				Id:     id,
+				Name:   fmt.Sprintf("%s%d", "jason", id),
+				Remark: remark,
+				Test:   2323.2,
+			}
+			memUser.AddData(u)
+
+			u3 := &User{}
+			rn := fmt.Sprintf("%s:%d", u.Name, u.Remark)
+			err = memUser.GetDataByIK(ikRemark, rn, u3)
+			if err == nil {
+				fmt.Println("ikRemark get", u3.toString())
+			}
+
+			u3 = &User{}
+			err = memUser.GetDataByIK(ikName, u.Name, u3)
+			if err == nil {
+				fmt.Println("ikName get", u3.toString())
+				memUser.CleanIkData(u3)
+				u3.Name += fmt.Sprintf("update%d", u3.Id)
+				memUser.UpdateData(u3)
+				fmt.Println("ikName update", u3.toString())
+
+				time.Sleep(time.Second * 3)
+				memUser.DelData(u3)
+
+				u4 := &User{}
+				where = fmt.Sprintf("name = '%s'", u3.Name)
+				err := memUser.GetDataByIK(ikName, u3.Name, u4, where)
+				if err == nil {
+					fmt.Println("ikName get", u4.toString())
+				} else {
+					fmt.Printf("ikName %s not found\n", u3.Name)
+				}
+			}
+		}
+
+	} else {
+		fmt.Println("pk get", u.toString())
+	}
+
+
 }

@@ -31,6 +31,9 @@ const (
 
 var ConvertTypeError = errors.New("convert type error")
 
+type IkCallback func(obj interface{})(ikField string, ikVal interface{})
+type PkCallback func(obj interface{}) (pkVal interface{})
+
 var defaultMemModeExPool = sync.Pool{
 	New: func() interface{} {
 		return &MemMode{
@@ -62,7 +65,6 @@ type MemMgr struct {
 	key          string
 	pKey         string
 	pk           string
-	pks          []string
 	isPkIncr     bool
 	log          *logger.Logger
 	dbMgr        *DBMgr
@@ -70,28 +72,33 @@ type MemMgr struct {
 	queueWorking int32
 	queueWait    sync.WaitGroup
 	expire		 int64
+	ikCallbackList	[]IkCallback
+	pkCallback		PkCallback
 }
 
-func NewMemMgr(rc *RedisClient, initPK bool, dbName, tableName string, pks []string, logCfg ...*conf.LogConfig) *MemMgr {
+func NewMemMgr(rc *RedisClient, dbName, tableName, pk string,
+	pkCallback PkCallback, logCfg ...*conf.LogConfig) *MemMgr {
 	log := logger.NewLogger(logger.TRACE)
 	if len(logCfg) > 0 {
 		logConf := logCfg[0]
 		if logConf != nil {
 			logLv := logger.GetLevel(logConf.LogLevel)
-			pathFile := fmt.Sprintf("%v/%v", logConf.LogPath, logConf.LogFile)
+			pathFile := logger.GetLogPathFile(logConf)
 			log.SetLevel(logLv)
-			log.SetRotation(time.Minute*time.Duration(logConf.MaxAge), time.Minute*time.Duration(logConf.RotationTime), pathFile)
+			log.SetRotation(time.Minute*time.Duration(logConf.MaxAge),
+				time.Minute*time.Duration(logConf.RotationTime), pathFile)
 		}
 	}
-
 	if rc == nil {
-		log.Error("redis client is nil")
+		log.Error("redis client nil")
 		return nil
 	}
-
-	pksLen := len(pks)
-	if pksLen == 0 {
-		log.Error("pk is nil")
+	if len(pk) == 0 {
+		log.Error("primary key error")
+		return nil
+	}
+	if pkCallback == nil {
+		log.Warn("primary key callback nil")
 		return nil
 	}
 
@@ -101,31 +108,30 @@ func NewMemMgr(rc *RedisClient, initPK bool, dbName, tableName string, pks []str
 		tableName:    tableName,
 		key:          fmt.Sprintf("%s:%s", dbName, tableName),
 		pKey:         fmt.Sprintf("%s:%s:pk", dbName, tableName),
-		pks:          pks,
+		pk:           pk,
+		isPkIncr:	  true,
 		log:          log,
 		dbMgr:        GetDB(dbName),
 		queue:        utils.NewSafeQueue(),
 		queueWorking: 0,
-		expire: 	  int64(time.Second) * 86400,
+		expire: 	  60 * 60 * 24,
+		pkCallback:	  pkCallback,
 	}
 
-	n := pksLen - 1
-	var str strings.Builder
-	for idx, v := range pks {
-		str.Write([]byte(v))
-		if idx < n {
-			str.Write([]byte(":"))
-		}
-	}
-	mm.pk = str.String()
-
-	if initPK && pksLen == 1 {
-		mm.isPkIncr = true
-		mm.initPKValue()
-	}
-
+	mm.initPKValue()
 	mm.log.Infof("table %v cache init ok", mm.tableName)
 	return mm
+}
+
+func (mm *MemMgr) SetPkCallback(pkCallback PkCallback) {
+	mm.pkCallback = pkCallback
+}
+
+func (mm *MemMgr) SetIKCallback(ikCallbackList []IkCallback) {
+	if ikCallbackList == nil {
+		return
+	}
+	mm.ikCallbackList = ikCallbackList
 }
 
 func (mm *MemMgr) GetTableName() string {
@@ -158,14 +164,29 @@ func (mm *MemMgr) pkIncr() interface{} {
 
 func (mm *MemMgr) GetPKIncr() int64 {
 	if mm.isPkIncr {
-		Id := mm.pkIncr()
-		if Id == nil {
+		id := mm.pkIncr()
+		if id == nil {
 			mm.log.Error("get new Id failed")
 			return -1
 		}
-		return Id.(int64)
+		Id, ok := id.(int64)
+		if !ok {
+			mm.log.Error("Id type error")
+			return -1
+		}
+		return Id
 	}
 	return -1
+}
+
+func (mm *MemMgr) SetLogConf(logConf *conf.LogConfig) {
+	if logConf == nil {
+		return
+	}
+	logLv := logger.GetLevel(logConf.LogLevel)
+	pathFile := logger.GetLogPathFile(logConf)
+	mm.SetLogLevel(logLv)
+	mm.SetLogRotation(logConf.MaxAge, logConf.RotationTime, pathFile)
 }
 
 func (mm *MemMgr) SetLogLevel(lv int) {
@@ -208,28 +229,6 @@ func (mm *MemMgr) produceFieldKey(prefix, key string) string {
 	return d.String()
 }
 
-func (mm *MemMgr) produceSpecialKey(keys ...interface{}) string {
-	n := len(keys)
-	if n == 0 {
-		return ""
-	}
-	n--
-	var keyStr strings.Builder
-
-	for idx, k := range keys {
-		val, err := mm.convertKey(k)
-		if err != nil {
-			continue
-		}
-		keyStr.Write([]byte(val))
-		if idx < n {
-			keyStr.Write([]byte(":"))
-		}
-	}
-
-	return keyStr.String()
-}
-
 func (mm *MemMgr) convertKey(v interface{}) (val string, err error) {
 	switch v.(type) {
 	case []byte:
@@ -248,46 +247,6 @@ func (mm *MemMgr) convertKey(v interface{}) (val string, err error) {
 		err = ConvertTypeError
 	}
 	return
-}
-
-func (mm *MemMgr) GetMultiPKValue(keyValMap map[string]interface{}) (string, string) {
-	if keyValMap == nil {
-		return "", ""
-	}
-	n := len(keyValMap)
-	if n == 0 {
-		return "", ""
-	}
-
-	n--
-	idx := 0
-	var keyStr strings.Builder
-	var condStr strings.Builder
-
-	for _, k := range mm.pks {
-		v, ok := keyValMap[k]
-		if !ok {
-			return "", ""
-		}
-		val, err := mm.convertKey(v)
-		if err != nil {
-			continue
-		}
-		keyStr.Write([]byte(val))
-
-		cond := mm.GetCond(k, v)
-		if len(cond) > 0 {
-			condStr.Write([]byte(cond))
-		}
-
-		if idx < n {
-			keyStr.Write([]byte(":"))
-			condStr.Write([]byte(" and "))
-		}
-		idx++
-	}
-
-	return keyStr.String(), condStr.String()
 }
 
 func (mm *MemMgr) GetCond(key string, val interface{}) string {
@@ -321,13 +280,7 @@ func (mm *MemMgr) SetExpire(second int64) {
 	mm.expire = second
 }
 
-func (mm *MemMgr) Expire(key string, second int64) (err error) {
-	keyName := mm.producePriKey(key)
-	_, err = mm.rc.Expire(keyName, second)
-	return err
-}
-
-func (mm *MemMgr) Set(key string, v interface{}, expire ...int64) (err error) {
+func (mm *MemMgr) set(key string, v interface{}, expire ...int64) (err error) {
 	keyName := mm.producePriKey(key)
 	exp := mm.expire
 	if len(expire) > 0 {
@@ -337,13 +290,13 @@ func (mm *MemMgr) Set(key string, v interface{}, expire ...int64) (err error) {
 	return err
 }
 
-func (mm *MemMgr) Get(key string) (d interface{}, err error) {
+func (mm *MemMgr) get(key string) (d interface{}, err error) {
 	keyName := mm.producePriKey(key)
 	d, err = mm.rc.Get(keyName)
 	return
 }
 
-func (mm *MemMgr) MSet(kv map[string]interface{}) (err error) {
+func (mm *MemMgr) mSet(kv map[string]interface{}) (err error) {
 	if kv == nil {
 		return
 	}
@@ -356,7 +309,7 @@ func (mm *MemMgr) MSet(kv map[string]interface{}) (err error) {
 	return
 }
 
-func (mm *MemMgr) MGet(keys ...string) (v []interface{}, err error) {
+func (mm *MemMgr) mGet(keys ...string) (v []interface{}, err error) {
 	kvs := make([]interface{}, 0)
 	for _, v := range keys {
 		keyName := mm.producePriKey(v)
@@ -366,7 +319,7 @@ func (mm *MemMgr) MGet(keys ...string) (v []interface{}, err error) {
 	return
 }
 
-func (mm *MemMgr) SetIK(ikName, ikValue string, v interface{}, expire ...int64) (err error) {
+func (mm *MemMgr) setIK(ikName, ikValue string, v interface{}, expire ...int64) (err error) {
 	keyName := mm.produceIKey(ikName, ikValue)
 	exp := mm.expire
 	if len(expire) > 0 {
@@ -376,19 +329,19 @@ func (mm *MemMgr) SetIK(ikName, ikValue string, v interface{}, expire ...int64) 
 	return
 }
 
-func (mm *MemMgr) GetIK(ikName, ikValue string) (d interface{}, err error) {
+func (mm *MemMgr) getIK(ikName, ikValue string) (d interface{}, err error) {
 	keyName := mm.produceIKey(ikName, ikValue)
 	d, err = mm.rc.Get(keyName)
 	return
 }
 
-func (mm *MemMgr) HSet(key string, v interface{}) (err error) {
+func (mm *MemMgr) hSet(key string, v interface{}) (err error) {
 	field := mm.produceFieldKey(mm.pk, key)
 	_, err = mm.rc.HSet(mm.key, field, v)
 	return
 }
 
-func (mm *MemMgr) HGet(key string, produce ...bool) (d interface{}, err error) {
+func (mm *MemMgr) hGet(key string, produce ...bool) (d interface{}, err error) {
 	field := key
 	produceKey := true
 	if len(produce) > 0 {
@@ -401,43 +354,43 @@ func (mm *MemMgr) HGet(key string, produce ...bool) (d interface{}, err error) {
 	return
 }
 
-func (mm *MemMgr) HSetIK(ik, key string, v interface{}) (err error) {
+func (mm *MemMgr) hSetIK(ik, key string, v interface{}) (err error) {
 	field := mm.produceFieldKey(ik, key)
 	_, err = mm.rc.HSet(mm.key, field, v)
 	return
 }
 
-func (mm *MemMgr) HGetIK(ik, key string) (d interface{}, err error) {
+func (mm *MemMgr) hGetIK(ik, key string) (d interface{}, err error) {
 	field := mm.produceFieldKey(ik, key)
 	d, err = mm.rc.HGet(mm.key, field)
 	return
 }
 
-func (mm *MemMgr) Del(key string) (err error) {
+func (mm *MemMgr) del(key string) (err error) {
 	keyName := mm.producePriKey(key)
 	_, err = mm.rc.Del(keyName)
 	return err
 }
 
-func (mm *MemMgr) HDel(key string) (err error) {
+func (mm *MemMgr) hDel(key string) (err error) {
 	field := mm.produceFieldKey(mm.pk, key)
 	_, err = mm.rc.HDel(mm.key, field)
 	return err
 }
 
-func (mm *MemMgr) HDelIK(ik, key string) (err error) {
+func (mm *MemMgr) hDelIK(ik, key string) (err error) {
 	field := mm.produceFieldKey(ik, key)
 	_, err = mm.rc.HDel(mm.key, field)
 	return
 }
 
-func (mm *MemMgr) DelIK(ikName, ikValue string) (err error) {
+func (mm *MemMgr) delIK(ikName, ikValue string) (err error) {
 	keyName := mm.produceIKey(ikName, ikValue)
 	_, err = mm.rc.Del(keyName)
 	return
 }
 
-func (mm *MemMgr) SetDataIK(ikName string, ikValue, pkValue interface{}, expire ...int64) {
+func (mm *MemMgr) setDataIK(ikName string, ikValue, pkValue interface{}, expire ...int64) {
 	ikVal, err := mm.convertKey(ikValue)
 	if err != nil {
 		mm.log.Error(err)
@@ -448,14 +401,58 @@ func (mm *MemMgr) SetDataIK(ikName string, ikValue, pkValue interface{}, expire 
 		mm.log.Error(err)
 		return
 	}
-	err = mm.SetIK(ikName, ikVal, pkVal, expire...)
+	err = mm.setIK(ikName, ikVal, pkVal, expire...)
 	if err != nil {
 		mm.log.Error(err)
 	}
 }
 
-func (mm *MemMgr) setData(state int, key interface{}, d interface{}, saveDB bool, expire ...int64) bool {
-	if d == nil {
+func (mm *MemMgr) setDataAllIk(dest interface{}, expire ...int64) {
+	if dest == nil || mm.ikCallbackList == nil || mm.pkCallback == nil {
+		return
+	}
+	pkVal := mm.pkCallback(dest)
+	if pkVal == nil {
+		return
+	}
+	for _, ikCallback := range mm.ikCallbackList {
+		if ikCallback == nil {
+			continue
+		}
+		ikField, ikVal := ikCallback(dest)
+		if len(ikField) == 0 {
+			continue
+		}
+		mm.setDataIK(ikField, ikVal, pkVal, expire...)
+	}
+}
+
+func (mm *MemMgr) delDataAllIk(dest interface{}) {
+	if dest == nil || mm.ikCallbackList == nil || mm.pkCallback == nil {
+		return
+	}
+	for _, ikCallback := range mm.ikCallbackList {
+		if ikCallback == nil {
+			continue
+		}
+		ikField, ikVal := ikCallback(dest)
+		if len(ikField) == 0 {
+			continue
+		}
+		mm.delDataIK(ikField, ikVal)
+	}
+}
+
+func (mm *MemMgr) CleanIkData(dest interface{}) {
+	mm.delDataAllIk(dest)
+}
+
+func (mm *MemMgr) setData(state int, dest interface{}, saveDB bool, expire ...int64) bool {
+	if dest == nil || mm.pkCallback == nil {
+		return false
+	}
+	key := mm.pkCallback(dest)
+	if key == nil {
 		return false
 	}
 	k, err := mm.convertKey(key)
@@ -464,63 +461,40 @@ func (mm *MemMgr) setData(state int, key interface{}, d interface{}, saveDB bool
 		return false
 	}
 
-	v, err := jsoniter.Marshal(d)
+	v, err := jsoniter.Marshal(dest)
 	if err != nil {
 		mm.log.Error(err)
 		return false
 	}
 
 	if saveDB {
-		mm.putQueue(state, d)
+		mm.putQueue(state, dest)
 	}
 
-	err = mm.Set(k, v, expire...)
+	err = mm.set(k, v, expire...)
 	if err != nil {
 		mm.log.Error(err)
 		return false
 	}
 
+	mm.setDataAllIk(dest, expire...)
 	return true
 }
 
-func (mm *MemMgr) AddMem(key interface{}, d interface{}, expire ...int64) bool {
-	return mm.setData(MEM_STATE_ORI, key, d, false, expire...)
+func (mm *MemMgr) AddMem(d interface{}, expire ...int64) bool {
+	return mm.setData(MEM_STATE_ORI, d, false, expire...)
 }
 
-func (mm *MemMgr) AddMemByMultiPK(keyValMap map[string]interface{}, d interface{}, expire ...int64) bool {
-	keys, _ := mm.GetMultiPKValue(keyValMap)
-	if len(keys) == 0 {
-		return false
-	}
-	return mm.AddMem(keys, d, expire...)
+func (mm *MemMgr) AddData(d interface{}, expire ...int64) bool {
+	return mm.setData(MEM_STATE_NEW, d, true, expire...)
 }
 
-func (mm *MemMgr) AddData(key interface{}, d interface{}, expire ...int64) bool {
-	return mm.setData(MEM_STATE_NEW, key, d, true, expire...)
-}
-
-func (mm *MemMgr) AddDataByMultiPK(keyValMap map[string]interface{}, d interface{}, expire ...int64) bool {
-	keys, _ := mm.GetMultiPKValue(keyValMap)
-	if len(keys) == 0 {
-		return false
-	}
-	return mm.AddData(keys, d, expire...)
-}
-
-func (mm *MemMgr) UpdateData(key interface{}, d interface{}, expire ...int64) bool {
-	return mm.setData(MEM_STATE_UPDATE, key, d, true, expire...)
-}
-
-func (mm *MemMgr) UpdateDataByMultiPK(keyValMap map[string]interface{}, d interface{}, expire ...int64) bool {
-	keys, _ := mm.GetMultiPKValue(keyValMap)
-	if len(keys) == 0 {
-		return false
-	}
-	return mm.UpdateData(keys, d, expire...)
+func (mm *MemMgr) UpdateData(d interface{}, expire ...int64) bool {
+	return mm.setData(MEM_STATE_UPDATE, d, true, expire...)
 }
 
 func (mm *MemMgr) getData(key string) ([]byte, error) {
-	v, err := mm.Get(key)
+	v, err := mm.get(key)
 	if err != nil {
 		mm.log.Error(err)
 		return nil, err
@@ -559,10 +533,12 @@ func (mm *MemMgr) GetData(key interface{}, dest interface{}, checkDB ...bool) er
 				cond := mm.GetCond(mm.pk, key)
 				err = mm.dbMgr.QueryRecord(mm.tableName, cond, dest)
 				if err != nil {
-					mm.log.Error(err)
+					if err != gorm.ErrRecordNotFound {
+						mm.log.Error(err)
+					}
 					return err
 				}
-				mm.setData(MEM_STATE_ORI, k, dest, false, mm.expire)
+				mm.setData(MEM_STATE_ORI, dest, false, mm.expire)
 			}
 		}
 		mm.log.Error(err)
@@ -577,54 +553,31 @@ func (mm *MemMgr) GetData(key interface{}, dest interface{}, checkDB ...bool) er
 	return nil
 }
 
-func (mm *MemMgr) GetDataByMultiPK(keyValMap map[string]interface{}, dest interface{}, checkDB ...bool) error {
-	keys, cond := mm.GetMultiPKValue(keyValMap)
-	if len(keys) == 0 {
-		return nil
-	}
-
-	d, err := mm.getData(keys)
-	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			fromDB := true
-			if len(checkDB) > 0 {
-				fromDB = checkDB[0]
-			}
-			if fromDB {
-				err = mm.dbMgr.QueryRecord(mm.tableName, cond, dest)
-				if err != nil {
-					mm.log.Error(err)
-					return err
-				}
-				mm.setData(MEM_STATE_ORI, keys, dest, false, mm.expire)
-			}
-		}
-		mm.log.Error(err)
-		return err
-	}
-
-	err = jsoniter.Unmarshal(d, dest)
-	if err != nil {
-		mm.log.Error(err)
-		return err
-	}
-
-	return nil
-}
-
-func (mm *MemMgr) GetDataByIK(ikName string, ikValue, dest interface{}) error {
+func (mm *MemMgr) GetDataByIK(ikName string, ikValue, dest interface{}, queryWhere...string) error {
 	ikVal, err := mm.convertKey(ikValue)
 	if err != nil {
 		mm.log.Error(err)
 		return err
 	}
-	d, err := mm.GetIK(ikName, ikVal)
+	d, err := mm.getIK(ikName, ikVal)
 	if err != nil {
 		mm.log.Error(err)
 		return err
 	}
 	if d == nil {
-		return gorm.ErrRecordNotFound
+		err = gorm.ErrRecordNotFound
+		if len(queryWhere) > 0 {
+			where := queryWhere[0]
+			err = mm.dbMgr.QueryRecord(mm.tableName, where, dest)
+			if err != nil {
+				if err != gorm.ErrRecordNotFound {
+					mm.log.Error(err)
+				}
+				return err
+			}
+			mm.setData(MEM_STATE_ORI, dest, false, mm.expire)
+		}
+		return err
 	}
 
 	v, ok := d.([]byte)
@@ -641,7 +594,14 @@ func (mm *MemMgr) GetDataByIK(ikName string, ikValue, dest interface{}) error {
 
 }
 
-func (mm *MemMgr) DelData(key interface{}) bool {
+func (mm *MemMgr) DelData(dest interface{}) bool {
+	if dest == nil {
+		return false
+	}
+	key := mm.pkCallback(dest)
+	if key == nil {
+		return false
+	}
 	k, err := mm.convertKey(key)
 	if err != nil {
 		mm.log.Error(err)
@@ -653,37 +613,23 @@ func (mm *MemMgr) DelData(key interface{}) bool {
 		mm.putQueue(MEM_STATE_DEL, cond)
 	}
 
-	err = mm.Del(k)
+	err = mm.del(k)
 	if err != nil {
 		mm.log.Error(err)
 		return false
 	}
+
+	mm.delDataAllIk(dest)
 	return true
 }
 
-func (mm *MemMgr) DelDataByMultiPK(keyValMap map[string]interface{}) bool {
-	keys, cond := mm.GetMultiPKValue(keyValMap)
-	if len(keys) == 0 {
-		return false
-	}
-
-	mm.putQueue(MEM_STATE_DEL, cond)
-
-	err := mm.Del(keys)
-	if err != nil {
-		mm.log.Error(err)
-		return false
-	}
-	return true
-}
-
-func (mm *MemMgr) DelDataIK(ikName string, ikValue interface{}) bool {
+func (mm *MemMgr) delDataIK(ikName string, ikValue interface{}) bool {
 	ikVal, err := mm.convertKey(ikValue)
 	if err != nil {
 		mm.log.Error(err)
 		return false
 	}
-	err = mm.DelIK(ikName, ikVal)
+	err = mm.delIK(ikName, ikVal)
 	if err != nil {
 		mm.log.Error(err)
 		return false

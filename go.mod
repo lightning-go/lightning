@@ -18,13 +18,13 @@ require (
 	github.com/lightning-go/lightning v0.0.0-20200330075514-e3701f4ba5bf
 	github.com/mna/redisc v1.1.7
 	github.com/pkg/errors v0.9.1
-	github.com/ramya-rao-a/go-outline v0.0.0-20200117021646-2a048b4510eb // indirect
+	//github.com/ramya-rao-a/go-outline v0.0.0-20200117021646-2a048b4510eb // indirect
 	github.com/rifflock/lfshook v0.0.0-20180920164130-b9218ef580f5
-	github.com/rogpeppe/godef v1.1.2 // indirect
+	//github.com/rogpeppe/godef v1.1.2 // indirect
 	github.com/satori/go.uuid v1.2.0
 	github.com/sirupsen/logrus v1.6.0
 	go.uber.org/zap v1.16.0 // indirect
-	golang.org/x/tools/gopls v0.4.3 // indirect
+	//golang.org/x/tools/gopls v0.4.3 // indirect
 	google.golang.org/grpc v1.26.0
 )
 

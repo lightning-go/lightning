@@ -6,16 +6,15 @@
 package app
 
 import (
-	"fmt"
-	"github.com/lightning-go/lightning/network"
-	"github.com/lightning-go/lightning/module"
-	"github.com/lightning-go/lightning/defs"
-	"github.com/lightning-go/lightning/logger"
-	"github.com/lightning-go/lightning/example/cluster/common"
-	"github.com/lightning-go/lightning/example/cluster/center/service"
-	"github.com/lightning-go/lightning/example/cluster/msg"
 	"github.com/lightning-go/lightning/conf"
+	"github.com/lightning-go/lightning/defs"
+	"github.com/lightning-go/lightning/example/cluster/center/service"
+	"github.com/lightning-go/lightning/example/cluster/common"
 	"github.com/lightning-go/lightning/example/cluster/core"
+	"github.com/lightning-go/lightning/example/cluster/msg"
+	"github.com/lightning-go/lightning/logger"
+	"github.com/lightning-go/lightning/module"
+	"github.com/lightning-go/lightning/network"
 )
 
 type CenterServer struct {
@@ -45,7 +44,7 @@ func (cs *CenterServer) initLog() {
 	logConf := conf.GetLogCfg("center")
 	if logConf != nil {
 		logLv := logger.GetLevel(logConf.LogLevel)
-		pathFile := fmt.Sprintf("%s/%s", logConf.LogPath, logConf.LogFile)
+		pathFile := logger.GetLogPathFile(logConf)
 		logger.InitLog(logLv, logConf.MaxAge, logConf.RotationTime, pathFile)
 	}
 }

@@ -6,9 +6,9 @@
 package app
 
 import (
+	"github.com/lightning-go/lightning/logger"
 	"github.com/lightning-go/lightning/selector"
 	"sync"
-	"github.com/lightning-go/lightning/logger"
 )
 
 type ServeSelector struct {
@@ -57,7 +57,7 @@ func (ss *ServeSelector) AddRemoteData(sd *selector.SessionData, cb func(*select
 	if sd == nil {
 		return
 	}
-	logger.Debugf("put - name: %v, host: %v, type: %v, weight: %v",
+	logger.Debugf("remote - name: %v, host: %v, type: %v, weight: %v",
 		sd.Name, sd.Host, sd.Type, sd.Weight)
 
 	isNew, changed := ss.IsNew(sd)
