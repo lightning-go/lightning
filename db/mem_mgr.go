@@ -309,7 +309,7 @@ func (mm *MemMgr) mSet(kv map[string]interface{}) (err error) {
 	return
 }
 
-func (mm *MemMgr) mGet(keys ...string) (v []interface{}, err error) {
+func (mm *MemMgr) mGet(keys []string) (v []interface{}, err error) {
 	kvs := make([]interface{}, 0)
 	for _, v := range keys {
 		keyName := mm.producePriKey(v)
